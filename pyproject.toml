@@ -1,0 +1,29 @@
+[tool.black]
+include = '''
+/(
+     src
+   | scripts
+   | tests
+)/
+'''
+line-length = 100
+exclude = '''
+/(
+    \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
+
+[tool.pytest.ini_options]
+addopts = "--cov=src"
+testpaths = [
+    "tests",
+]
+
