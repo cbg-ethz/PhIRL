@@ -1,0 +1,36 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.8]
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+        cache-dependency-path: 'requirements/*.txt'
+    - name: Install basic dependencies
+      run: |
+        pip install -r requirements/basic.txt
+    - name: Install dev dependencies
+      run: pip install -r requirements/dev.txt
+    - name: Install the modules
+      run: pip install .
+    - name: Check whether black has been applied
+      run: black --check `find . -iname "*.py"`
+    - name: Test with pytest
+      run: |
+        python -m pytest tests
+

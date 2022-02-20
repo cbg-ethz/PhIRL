@@ -12,6 +12,11 @@
 *.png
 *.pdf
 
+# Jupyter notebooks
+*.ipynb
+
+# PyCharm directory
+.idea/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
