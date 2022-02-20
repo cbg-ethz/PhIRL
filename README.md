@@ -23,4 +23,8 @@ $ pip install -r requirements/dev.txt
 ```
 $ pre-commit install
 ```
+3. Check if you can run the tests:
+```
+$ pytest
+```
 
