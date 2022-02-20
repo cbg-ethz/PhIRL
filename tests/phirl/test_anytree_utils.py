@@ -30,7 +30,7 @@ def test_parse_tree() -> None:
 
     for node in anytree.PreOrderIter(root):
         n = node.name
-        assert node.square == n ** 2
+        assert node.square == n**2
         assert node.doubled == 2 * n
 
         if n == 2 or n == 5:
