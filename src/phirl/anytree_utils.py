@@ -1,7 +1,8 @@
 import dataclasses
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 import anytree
+import numpy as np
 import pandas as pd
 
 
@@ -75,7 +76,7 @@ def parse_tree(df: pd.DataFrame, naming: TreeNaming) -> anytree.Node:
                 raise ValueError(
                     f"Root is {root}, but {node_id} == {parent_id} also looks like a root."
                 )
-            root = anytree.Node(node_id, **values)
+            root = anytree.Node(node_id, parent=None, **values)
             nodes[node_id] = root
         else:
             nodes[node_id] = anytree.Node(node_id, parent=nodes[parent_id], **values)
@@ -102,3 +103,39 @@ def parse_forest(df: pd.DataFrame, naming: ForestNaming) -> Dict[Any, anytree.No
         result[tree_name] = parse_tree(df=tree_df, naming=naming.naming)
 
     return result
+
+
+def tree_random_walk(
+    root: anytree.Node, max_length: Optional[int] = None, seed=None
+) -> List[anytree.Node]:
+    """Random walk from root downwards.
+
+    Args:
+        root: root of the tree used to generate a path
+        max_length: maximal length of the path. Use None to end at a leaf node.
+        seed: seed for reproducibility. See numpy.random.default_rng()
+
+    Returns:
+        a list of visited nodes (including `root`)
+    """
+    rng = np.random.default_rng(seed)
+
+    if max_length is not None and max_length < 1:
+        raise ValueError("Path length must be at least 1.")
+
+    # Start the path at the specified root
+    path = [root]
+    while True:
+        # If the path is long enough, end the loop
+        if max_length is not None and len(path) >= max_length:
+            break
+        # If we are at a leaf node, end the loop
+        last_visited = path[-1]
+        children = last_visited.children
+        if len(children) == 0:
+            break
+        # Select a child at random
+        selected = rng.integers(0, len(children))
+        path.append(children[selected])
+
+    return path
