@@ -1,3 +1,4 @@
 anytree
+hydra-core
 numpy
 pandas

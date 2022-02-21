@@ -13,7 +13,16 @@ $ pip install -r requirements/basic.txt
 $ pip install -e .
 ```
 
-### Contributing
+## Usage
+We develop a Python module, which can be imported as
+```python
+import phirl.api as ph
+```
+as well as a set of scripts used to run individual experiments.
+
+Their usage description will follow. 
+
+## Contributing
 If you plan to work on the code, the following tools will be required:
 1. Install additional dependencies:
 ```
@@ -27,4 +36,5 @@ $ pre-commit install
 ```
 $ pytest
 ```
+
 
