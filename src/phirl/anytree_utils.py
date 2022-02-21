@@ -1,5 +1,5 @@
 import dataclasses
-from typing import Any, Dict, List, Optional
+from typing import Any, Collection, Dict, Iterable, List, Optional, Sequence, Tuple, TypeVar, Union
 
 import anytree
 import numpy as np
@@ -105,10 +105,91 @@ def parse_forest(df: pd.DataFrame, naming: ForestNaming) -> Dict[Any, anytree.No
     return result
 
 
-def tree_random_walk(
+Trajectory = Tuple[anytree.Node]
+
+
+def list_all_trajectories(root: anytree.Node, max_length: Optional[int] = None) -> List[Trajectory]:
+    """Generates all random walks from `root` downwards.
+
+    Args:
+        root: root of the trees
+        max_length
+
+    Returns
+
+    """
+    if max_length is not None and max_length <= 0:
+        raise ValueError(
+            f"Max length needs to be at least 1 (was {max_length}). Root node: {root}."
+        )
+
+    # If this is leaf, there is only one trajectory.
+    if not len(root.children) or max_length == 1:
+        return [(root,)]
+
+    ret = []
+    for child in root.children:
+        mx: Optional[int] = None if max_length is None else max_length - 1
+        trajectories = list_all_trajectories(child, max_length=mx)
+        for traj in trajectories:
+            ret.append(tuple([root] + list(traj)))
+
+    return ret
+
+
+T = TypeVar("T")
+
+
+def filter_trajectories(
+    trajectories: Iterable[Sequence[T]],
+    longer_than: Optional[int] = None,
+    shorter_than: Optional[int] = None,
+    allowed_length: Union[None, int, Collection[int]] = None,
+) -> List[Sequence[T]]:
+    """Retains a subset of trajectories which length fulfils given
+    constraints.
+
+    Args:
+        trajectories: trajectories from which some will be retained
+        longer_than: if not None, retains trajectories must have the specified length or be longer
+        shorter_than: if not None, retained trajectories must have the specified length
+            or be shorter
+        allowed_length: if not None, retained trajectories of specified length (or lengths)
+
+    Returns:
+        a list of trajectories
+    """
+    ret = trajectories
+    if longer_than is not None:
+        ret = filter(lambda x: len(x) >= longer_than, ret)
+    if shorter_than is not None:
+        ret = filter(lambda x: len(x) <= shorter_than, ret)
+    if allowed_length is not None:
+        set_lengths = {allowed_length} if isinstance(allowed_length, int) else set(allowed_length)
+        ret = filter(lambda x: len(x) in set_lengths, ret)
+    return list(ret)
+
+
+def pick_random_trajectory(trajectories: Collection[Trajectory], seed=None) -> Trajectory:
+    """Samples a trajectory from a set. All trajectories are assumed to have equal probability.
+
+    Args:
+        trajectories: collection of trajectories
+        seed: seed for reproducibility, see np.random.default_rng
+
+    Returns:
+        trajectory
+    """
+    trajectories = list(trajectories)
+    rng = np.random.default_rng(seed)
+    index = rng.integers(0, len(trajectories))
+    return trajectories[index]
+
+
+def construct_random_trajectory(
     root: anytree.Node, max_length: Optional[int] = None, seed=None
-) -> List[anytree.Node]:
-    """Random walk from root downwards.
+) -> Trajectory:
+    """Constructs a random trajectory by a random walk from root downwards.
 
     Args:
         root: root of the tree used to generate a path
@@ -117,6 +198,9 @@ def tree_random_walk(
 
     Returns:
         a list of visited nodes (including `root`)
+
+    Note:
+        Longer trajectories have lower probability than the shorter ones.
     """
     rng = np.random.default_rng(seed)
 
@@ -136,6 +220,7 @@ def tree_random_walk(
             break
         # Select a child at random
         selected = rng.integers(0, len(children))
-        path.append(children[selected])
+        selected_child: anytree.Node = children[selected]
+        path.append(selected_child)
 
-    return path
+    return tuple(path)
