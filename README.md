@@ -3,7 +3,7 @@
 Project description to follow.
 
 ## Installation
-1. Make sure you use Python 3.8.
+1. Make sure you use Python 3.7 (or later).
 2. Install the requirements:
 ```
 $ pip install -r requirements/basic.txt
