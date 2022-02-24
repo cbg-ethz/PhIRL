@@ -28,7 +28,7 @@ setup(
     py_modules=[splitext(basename(path))[0] for path in glob("src/*.py")],
     include_package_data=True,
     zip_safe=False,
-    python_requires=">=3.8",
+    python_requires=">=3.7",
     install_requires=[],  # TODO(Pawel): We'll need to specify those or add the requirements.txt file
     setup_requires=[
         "pytest-runner",
