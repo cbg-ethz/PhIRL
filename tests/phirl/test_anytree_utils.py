@@ -43,6 +43,34 @@ def test_parse_tree() -> None:
             assert node.parent.name == 5
 
 
+def test_parse_forest() -> None:
+    forest = pd.DataFrame(
+        {
+            "Patient_ID": [1, 1, 2, 2, 2, 3, 3, 3, 3, 3],
+            "Tree_ID": [1, 1, 2, 2, 2, 3, 3, 3, 3, 3],
+            "Node_ID": [1, 2, 1, 2, 3, 1, 2, 3, 4, 5],
+            "Mutation_ID": [0, 4, 0, 4, 3, 0, 2, 4, 3, 4],
+            "Parent_ID": [1, 1, 1, 1, 2, 1, 1, 1, 2, 2],
+        }
+    )
+    naming = ph.ForestNaming(
+        tree_name="Tree_ID",
+        naming=ph.TreeNaming(
+            node="Node_ID",
+            parent="Parent_ID",
+            values={
+                "Mutation_ID": "mutation",
+            },
+        ),
+    )
+
+    parsed = ph.parse_forest(forest, naming=naming)
+    assert len(parsed) == 3
+    for root in parsed.values():
+        assert isinstance(root, anytree.Node)
+        assert hasattr(root, "mutation")
+
+
 @pytest.fixture
 def simple_tree() -> anytree.Node:
     """A simple tree with 3 paths:
