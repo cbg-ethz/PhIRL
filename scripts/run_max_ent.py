@@ -1,22 +1,28 @@
-from matplotlib.pyplot import get
-import phirl.api as ph
+"""Script running the MaxEnt IRL
+algorithm on a trees data set.
+
+Usage:
+    python scripts/run_max_ent.py data=$PWD/path_to_trees.csv n_action=5
+
+Note:
+    The data path must be absolute not relative.
+"""
+import dataclasses
+import logging
+from typing import Any, Dict, Optional
+
+import anytree
 import pandas as pd
 import numpy as np
-import itertools
 
-import trajectory
-
-data = pd.read_csv("tree_df.csv", delimiter=",")
-mutation = pd.read_csv("mhn.csv", delimiter=",")
-state_combinations = [list(i) for i in itertools.product([0, 1], repeat=5)]
-n_states = 32
-n_action = 5
+import phirl.api as ph
+import phirl.hydra_utils as hy
 
 
-def get_trees():
-    Forest_naming = ph.ForestNaming()
-    trees = ph.parse_forest(data, Forest_naming)
-    return trees
+# data = pd.read_csv("tree_df.csv", delimiter=",")
+# state_combinations = [list(i) for i in itertools.product([0, 1], repeat=5)]
+# n_states = 32
+# n_action = 5
 
 
 def get_all_trajectory_states_features(trees):
@@ -49,6 +55,7 @@ def get_all_trajectory_states_features(trees):
 
     return all_trajectory, all_features, all_states, all_transitions
 
+
 def transition_probability(all_transitions):
     p_transition = np.zeros((n_states, n_states, n_action))
     p_action = np.zeros((n_states, n_action))
@@ -77,13 +84,9 @@ def feature_expectation_from_trajectories(all_features, all_trajectory):
     feature_expectation = [0] * len(state_combinations)
 
     for i in range(len(all_features)):
-        feature_expectation = [
-            a + b for a, b in zip(feature_expectation, all_features[i])
-        ]
+        feature_expectation = [a + b for a, b in zip(feature_expectation, all_features[i])]
 
-    feature_expectation = [
-        number / len(all_trajectory) for number in feature_expectation
-    ]
+    feature_expectation = [number / len(all_trajectory) for number in feature_expectation]
 
     return feature_expectation
 
@@ -135,22 +138,69 @@ def local_action_probabilities(p_transition, all_states):
 
     for i in range(len(za)):
         print(za[i])
-        
+
     # print(za / zs[:,None])
     return za / zs[:, None]
 
 
-if __name__ == "__main__":
-    trees = get_trees()
+# ************************************************************************
+
+
+@hy.config
+@dataclasses.dataclass
+class MainConfig:
+    """Class storing arguments for the script.
+
+    Attrs:
+        data: path to a data frame with trees
+        n_action: number of actions (mutations)
+        naming: conventions used to name forest
+        max_length: use to limit the maximal length of the trajectory
+    """
+
+    data: str
+    n_action: int
+
+    naming: ph.ForestNaming = dataclasses.field(default_factory=ph.ForestNaming)
+    max_length: Optional[int] = None
+
+
+def get_trees(config: MainConfig) -> Dict[Any, anytree.Node]:
+    # TODO(Jiayi, Pawel): Missing docstring.
+    dataframe = pd.read_csv(config.data)
+    trees = ph.parse_forest(dataframe, naming=config.naming)
+    return trees
+
+
+@hy.main
+def main(config: MainConfig) -> None:
+    logger = logging.getLogger(__name__)
+    logger.info("Starting new run...")
+
+    logger.info(f"Creating MDP with {config.n_action} actions...")
+    mdp = ph.maxent.DeterministicTreeMDP(n_actions=config.n_action)
+
+    logger.info(f"Reading data from {config.data} file...")
+    trees = get_trees(config)
+
     (
         all_trajectory,
         all_features,
         all_states,
         all_transitions,
     ) = get_all_trajectory_states_features(trees)
-    feature_expectation = feature_expectation_from_trajectories(
-        all_features, all_trajectory
-    )
+
+    logger.info("Calculating feature expectations...")
+    feature_expectation = feature_expectation_from_trajectories(all_features, all_trajectory)
+
     p_transition, p_action = transition_probability(all_transitions)
     d = expected_svf_from_policy(p_transition, p_action, eps=1e-5)
     local = local_action_probabilities(p_transition, all_states)
+
+    logger.info(f"Feature expectation: {feature_expectation}")
+    logger.info(f"Expected SVF: {d}")
+    logger.info(f"Local action probabilities: {local}")
+
+
+if __name__ == "__main__":
+    main()
