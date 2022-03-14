@@ -1,9 +1,7 @@
 """Script running the MaxEnt IRL
 algorithm on a trees data set.
-
 Usage:
     python scripts/run_max_ent.py data=$PWD/path_to_trees.csv n_action=5
-
 Note:
     The data path must be absolute not relative.
 """
@@ -26,6 +24,17 @@ import phirl.hydra_utils as hy
 
 
 def get_all_trajectory_states_features(trees):
+    """
+    Args:
+        trees: a dataframe with tree information with column names: [Patient_ID, Tree_ID, Node_ID, Mutation_ID, Parent_ID]
+
+    Returns:
+    all_trajectory: a list of trajectories that includes nodes and mutations from root to leaf
+    all_states: a list of all terminal states for each trajectory
+    all_features: a list that records whether a state (including transit state) exists in a trajectory
+    all_transition: a 2D list that records the order of states in each trajectory
+    (e.g. all_transition[0][0] --> the initial state of the first trajectory)
+    """
     all_trajectory = []
     all_states = []
     all_features = []
@@ -57,6 +66,18 @@ def get_all_trajectory_states_features(trees):
 
 
 def transition_probability(all_transitions):
+    """
+    Args:
+        all_transitions: a 2D list that records the order of states in each trajectory
+
+    returns:
+        p_transition: `[from: Integer, to: Integer, action: Integer] -> probability: Float`
+        The probability of a transition from state `from` to state `to` via action `action` to succeed.
+
+        p_action: `[state: Integer, action: Integer] -> probability: Float`
+        Local action probabilities
+    """
+
     p_transition = np.zeros((n_states, n_states, n_action))
     p_action = np.zeros((n_states, n_action))
 
@@ -81,6 +102,20 @@ def transition_probability(all_transitions):
 
 
 def feature_expectation_from_trajectories(all_features, all_trajectory):
+
+    """
+    Compute the feature expectation of the given trajectories.
+    Simply counts the number of visitations to each feature-instance and
+    divides them by the number of trajectories.
+    Args:
+        features: The feature-matrix (e.g. as numpy array), mapping states
+            to features, i.e. a matrix of shape (n_states x n_features).
+        trajectories: A list or iterator of `Trajectory` instances.
+    Returns:
+        The feature-expectation of the provided trajectories as map
+        `[state: Integer] -> feature_expectation: Float`.
+    """
+
     feature_expectation = [0] * len(state_combinations)
 
     for i in range(len(all_features)):
@@ -92,6 +127,32 @@ def feature_expectation_from_trajectories(all_features, all_trajectory):
 
 
 def expected_svf_from_policy(p_transition, p_action, eps=1e-5):
+    """
+    Compute the expected state visitation frequency using the given local
+    action probabilities.
+    This is the forward pass of Algorithm 1 of the Maximum Entropy IRL paper
+    by Ziebart et al. (2008). Alternatively, it can also be found as
+    Algorithm 9.3 in in Ziebart's thesis (2010).
+    It has been slightly adapted for convergence, by forcing transition
+    probabilities from terminal stats to be zero.
+    Args:
+        p_transition: The transition probabilities of the MDP as table
+            `[from: Integer, to: Integer, action: Integer] -> probability: Float`
+            specifying the probability of a transition from state `from` to
+            state `to` via action `action` to succeed.
+
+        p_action: Local action probabilities as map
+            `[state: Integer, action: Integer] -> probability: Float`
+            as returned by `local_action_probabilities`.
+
+        eps: The threshold to be used as convergence criterion. Convergence
+            is assumed if the expected state visitation frequency changes
+            less than the threshold on all states in a single iteration.
+    Returns:
+        The expected state visitation frequencies as map
+        `[state: Integer] -> svf: Float`.
+    """
+
     p_initial = np.zeros(n_states)
     p_initial[0] = 1
 
@@ -118,6 +179,22 @@ def expected_svf_from_policy(p_transition, p_action, eps=1e-5):
 
 
 def local_action_probabilities(p_transition, all_states):
+    """
+    Compute the local action probabilities (policy) required for the edge
+    frequency calculation for maximum entropy reinfocement learning.
+    This is the backward pass of Algorithm 1 of the Maximum Entropy IRL
+    paper by Ziebart et al. (2008).
+    Args:
+        p_transition: The transition probabilities of the MDP as table
+            `[from: Integer, to: Integer, action: Integer] -> probability: Float`
+            specifying the probability of a transition from state `from` to
+            state `to` via action `action` to succeed.
+        all_states: A set/list of terminal states.
+
+    Returns:
+        The local action probabilities (policy) as map
+        `[state: Integer, action: Integer] -> probability: Float`
+    """
 
     reward = np.zeros((n_states,)) + 0.5
     er = np.exp(reward)
@@ -150,7 +227,6 @@ def local_action_probabilities(p_transition, all_states):
 @dataclasses.dataclass
 class MainConfig:
     """Class storing arguments for the script.
-
     Attrs:
         data: path to a data frame with trees
         n_action: number of actions (mutations)
