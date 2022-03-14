@@ -257,8 +257,8 @@ def main(config: MainConfig) -> None:
     mdp = ph.maxent.DeterministicTreeMDP(n_actions=config.n_action)
 
     logger.info(f"Reading data from {config.data} file...")
-    trees = get_trees(config)
 
+    trees = get_trees(config)
     (
         all_trajectory,
         all_features,
