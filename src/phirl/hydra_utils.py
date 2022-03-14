@@ -3,7 +3,10 @@ hydra needs somewhat verbose code.
 
 We wrap this code into two decorators.
 
-Use case:
+Usage example:
+
+import phirl.hydra_utils as hy
+
 
 @hy.config
 @dataclasses.dataclass
