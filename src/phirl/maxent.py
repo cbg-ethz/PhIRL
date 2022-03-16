@@ -107,7 +107,7 @@ class OneHotFeaturizer(Featurizer):
         self.n_states = len(space)
 
     def transform(self, state: State) -> np.ndarray:
-        idx = self.space.index(state)
+        idx = self.space.index(tuple(state))
         feature = np.zeros(self.n_states, dtype=float)
         feature[idx] = 1
         return feature
@@ -156,7 +156,7 @@ class StateTransitions():
             transitions.append(single_transition)
         return transitions
 
-    def get_p_action_and_transition(self) -> np.array:
+    def get_p_transition(self) -> np.array:
         """
         returns:
             p_transition: `[from: Integer, to: Integer, action: Integer] -> probability: Float`
@@ -167,26 +167,51 @@ class StateTransitions():
         """
         transitions = self.get_transition()
         p_transition = np.zeros((self.n_states, self.n_states, self.n_actions))
-        p_action = np.zeros((self.n_states, self.n_actions))
 
         for i in range(len(transitions)):
             for j in range(len(transitions[i]) - 1):
                 current = self.state_space.index(tuple(transitions[i][j]))
                 next = self.state_space.index(tuple(transitions[i][j + 1]))
                 for n in range(self.n_actions):
-                    if transitions[i][j + 1][n] != transitions[i][j][n]:
-                        mutation = n
-                        p_transition[current, next, mutation] += 1
-                        p_action[current, mutation] += 1
+                    if transitions[i][j - 1][n] != transitions[i][j][n]:
+                        action = n
+                        p_transition[current, next, action] += 1
 
         for i in range(self.n_states):
             if sum(sum(p_transition[i, :, :])) != 0:
                 p_transition[i, :, :] /= sum(sum(p_transition[i, :, :]))
 
-            if sum(p_action[i, :]) != 0:
-                p_action[i, :] /= sum(p_action[i, :])
+        return p_transition
 
-        return p_transition, p_action
+
+    def get_p_action(self, reward):
+        p_transition = self.get_p_transition()
+        er = np.exp(reward)
+        p_action = np.zeros((self.n_states,self.n_actions))
+
+        for i in range(self.n_states):
+            for j in range(self.n_actions):
+                p_action[i,j] = sum(p_transition[i,:,j]*er[i])
+        
+        p_action /= p_action.sum(axis=1)[:,None]
+        p_action = np.nan_to_num(p_action, nan = 0)
+        return p_action
+
+
+def get_features(featurizer: Featurizer, state_space):
+    '''
+    Args:
+        featurizer: mapping used to get the features for every single state
+        state_space: a list of states.
+    returns:
+        A 2-D np array (n_state x dim_feature) that maps the state to its corresponding feature
+    '''
+    features = []
+    for state in state_space:
+        features.append(featurizer.transform(state))
+    
+    return np.array(features)
+
 
 def expected_empirical_feature_counts_from_trajectories(
     mdp: DeterministicTreeMDP,
@@ -220,13 +245,14 @@ def expected_empirical_feature_counts_from_trajectories(
 
     # Initialize the dictionary with zero vectors
     counts = {state: get_default_feature() for state in mdp.state_space}
-
+    features = []
     for trajectory in trajectories:
         for state in trajectory:
             feature = featurizer.transform(state)
             counts[tuple(state)] += feature / m
+            features.append(feature / m)
 
-    return counts
+    return counts, np.array(features)
 
 #def feature_expectation_from_trajectories(transitions, state_space,featurizer):
 #    feature_expectation = {state: 0 for state in state_space}
@@ -283,4 +309,46 @@ def expected_svf_from_policy(p_transition, p_action, eps=1e-5):
     return d
 
 
+def irl(features, feature_expectation, optim, TS, eps, eps_esvf=1e-5):
+    """
+    Compute the reward signal given the demonstration trajectories using the
+    maximum entropy inverse reinforcement learning algorithm proposed in the
+    corresponding paper by Ziebart et al. (2008).
 
+    Args:
+        features: The feature-matrix (as a 2D- numpy array), mapping states
+        to features, i.e. a matrix of shape (n_states x dim_features).
+
+        feature_expectation: The feature-expectation of the provided trajectories as map
+        `[state: Integer] -> feature_expectation: Float`.
+
+        optim: The `Optimizer` instance to use for gradient-based optimization.
+
+        TS: class StateTransition from maxent.py, used to calculate p_action
+
+        eps: The threshold to be used as convergence criterion for the
+        reward parameters.
+
+        eps_svf: The threshold to be used as convergence criterion for the
+        expected state-visitation frequency.
+
+    """
+    p_transition = TS.get_p_transition()
+    theta = np.zeros((len(features[0]),)) + 0.5
+    delta = np.inf
+
+    optim.reset(theta)
+    while delta > eps:
+        theta_old = theta.copy()
+        reward = features.dot(theta)
+        #reward = np.zeros((n_states,)) + 0.5
+        p_action = TS.get_p_action(reward)
+        #print(p_action)
+        e_svf = expected_svf_from_policy(p_transition, p_action, eps_esvf)
+        grad = feature_expectation - features.T.dot(e_svf)
+
+        optim.step(grad[-1])
+        delta = np.max(np.abs(theta_old - theta))
+        
+    
+    return features.dot(theta)
