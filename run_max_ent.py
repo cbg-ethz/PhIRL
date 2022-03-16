@@ -18,43 +18,6 @@ import phirl.hydra_utils as hy
 from phirl.maxent import *
 from optimizer import *
 
-#def irl(p_transition, p_action, state_space, all_states, all_features, all_trajectory, optim, eps=1e-4, eps_esvf=1e-5):
-#    n_states, _, n_actions = p_transition.shape
-#    p_initial = np.zeros(n_states)
-#    p_initial[0] = 1
-
-    #feature_expectation = feature_expectation_from_trajectories(all_features, all_trajectory, state_space)
-#    all_states = np.array(all_states)
-#    all_features = np.array(all_features)
-#    state_space = np.array(state_space)
-#    # basic gradient descent
-#    theta = np.zeros((n_states,)) + 0.5
-#    delta = np.inf
-
-#    optim.reset(theta)
-#    while delta > eps:
-#        theta_old = theta.copy()
-
-        # compute per-state reward
-        #learned_features = np.zeros(n_states)
-#        reward = state_space.T.dot(theta)
-
-        # compute the gradient
-#        e_svf = expected_svf_from_policy(p_transition, p_action, eps_esvf)
-
-        #for i in range(len(all_features)):
-        #    for j in range(n_states):
-        #        learned_features[j] += e_svf[j]*state_space[i][j]
-        #learned_features /= len(all_features)
-
-        #grad = feature_expectation - learned_features
-        #grad = feature_expectation
-
-        # perform optimization step and compute delta for convergence
-        #optim.step(grad)
-        #delta = np.max(np.abs(theta_old - theta))
-    #return grad
-
 
 # ************************************************************************
 @hy.config
@@ -94,22 +57,25 @@ def main(config: MainConfig) -> None:
     trees = get_trees(config)
     n_states = get_n_states(config.n_action)
     state_space = get_state_space(config.n_action)
-    
+
     TS = StateTransitions(config.n_action, trees)
+    #p_transition = TS.get_p_transition()
     transitions = TS.get_transition()
-    p_transition, p_action = TS.get_p_action_and_transition()
-    
+    features = get_features(IdentityFeaturizer(Featurizer), state_space)
+
     logger.info("Calculating feature expectations...")
-    feature_expectation = expected_empirical_feature_counts_from_trajectories(mdp, featurizer=IdentityFeaturizer(Featurizer), trajectories=transitions)
-    print(feature_expectation)
-    d = expected_svf_from_policy(p_transition, p_action, eps=1e-5)
-    optim = Sga(lr=0.1)
-    #reward = irl(p_transition, p_action, state_space, all_states, all_features, all_trajectory, optim, eps=1e-4, eps_esvf=1e-5)
+    # featuerizer = OneHotFeaturizer(state_space)
+    counts, feature_expectation = expected_empirical_feature_counts_from_trajectories(mdp, featurizer=IdentityFeaturizer(), trajectories=transitions)
+    #d = expected_svf_from_policy(p_transition, p_action, eps=1e-5)
+    logger.info("Learning the reward function...")
+    optim = Sga(lr=1e-4)
+    reward = irl(features, feature_expectation, optim, TS, eps=1e-4, eps_esvf=1e-5)
     
-    logger.info(f"Feature expectation: {feature_expectation}")
-    logger.info(f"Expected SVF: {d}")
-    logger.info(f"Local action probabilities: {p_action}")
-    #logger.info(f"Reward function: {reward}")
+    #logger.info(f"Feature expectation: {feature_expectation}")
+    #logger.info(f"Expected SVF: {d}")
+    #logger.info(f"Local action probabilities: {p_action}")
+    #logger.info(f"Local transition probabilities: {p_transition}")
+    logger.info(f"Reward function: {reward}")
 
 
 if __name__ == "__main__":
