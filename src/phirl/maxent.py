@@ -9,6 +9,9 @@ i+1 has been acquired.
 MaxEnt IRL was proposed in
 B.D. Ziebart et al., Maximum Entropy Inverse Reinforcement Learning,
 AAAI (2008), https://www.aaai.org/Papers/AAAI/2008/AAAI08-227.pdf
+
+Note: The function expected_svf_from_policy and irl is referenced from https://github.com/qzed/irl-maxent/blob/master/src/maxent.py (Author: Maximilian Luz).
+License: https://github.com/qzed/irl-maxent/blob/master/LICENSE 
 """
 import itertools
 from typing import cast, Dict, Iterable, Sequence, Tuple
@@ -290,6 +293,8 @@ def expected_svf_from_policy(p_transition, p_action, eps=1e-5):
     Returns:
         The expected state visitation frequencies as map
         `[state: Integer] -> svf: Float`.
+
+    Please note: this function is partially referenced from https://github.com/qzed/irl-maxent/blob/master/src/maxent.py line 63-114.
     """
     n_states, _, n_actions = p_transition.shape
 
@@ -332,6 +337,7 @@ def irl(features, feature_expectation, optim, TS, eps, eps_esvf=1e-5):
         eps_svf: The threshold to be used as convergence criterion for the
         expected state-visitation frequency.
 
+    Please note: this function is partially referenced from https://github.com/qzed/irl-maxent/blob/master/src/maxent.py line 196-255.
     """
     p_transition = TS.get_p_transition()
     theta = np.zeros((len(features[0]),)) + 0.5
