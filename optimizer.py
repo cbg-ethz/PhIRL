@@ -3,6 +3,9 @@ Generic stochastic gradient-ascent based optimizers.
 Due to the MaxEnt IRL objective of maximizing the log-likelihood instead of
 minimizing a loss function, all optimizers in this module are actually
 stochastic gradient-ascent based instead of the more typical descent.
+
+Please note this file is copied from https://github.com/qzed/irl-maxent/blob/master/src/optimizer.py (Author: Maximilian Luz).
+License: https://github.com/qzed/irl-maxent/blob/master/LICENSE 
 """
 
 import numpy as np
