@@ -14,11 +14,14 @@ Note: The function expected_svf_from_policy and irl is referenced from https://g
 License: https://github.com/qzed/irl-maxent/blob/master/LICENSE 
 """
 import itertools
+from pyexpat import features
 from typing import cast, Dict, Iterable, Sequence, Tuple
 
 import numpy as np
+from pandas import array
 import phirl.api as ph
 from phirl._comp import Protocol
+import irl_maxent as me
 
 
 def get_n_states(n_actions: int) -> int:
@@ -29,16 +32,26 @@ def get_n_states(n_actions: int) -> int:
 State = Tuple[int, ...]
 Space = Tuple[State, ...]
 
+class State_space:
+    def __init__(self, n_action):
+        self.n_actions = n_action
+        
+    def get_state_space(self) -> Space:
+        """Returns the list of states.
+        Note:
+            The size of the space of states grows as
+            `2 ** n_actions`.
+        """
+        return tuple(cast(State, state) for state in itertools.product([0, 1], repeat=self.n_actions))
+    
+    def get_action_space(self) -> Space:
+        action_space = []
+        for i in range(self.n_actions):
+            action = [0]*self.n_actions
+            action[i] = 1
+            action_space.append(tuple(action))
 
-def get_state_space(n_actions: int) -> Space:
-    """Returns the list of states.
-    Note:
-        The size of the space of states grows as
-        `2 ** n_actions`.
-    """
-    return tuple(cast(State, state) for state in itertools.product([0, 1], repeat=n_actions))
-
-
+        return action_space
 
 class DeterministicTreeMDP:
     """This class defines a deterministic MDP.
@@ -52,14 +65,15 @@ class DeterministicTreeMDP:
         action `i+1`th is present.
     """
 
-    def __init__(self, n_actions: int) -> None:
+    def __init__(self, n_actions: int, SP: State_space) -> None:
         """The constructor method.
         Args:
             n_actions: number of actions in the MDP
         """
         self.n_actions = n_actions
         self.n_states = get_n_states(n_actions)
-        self.state_space = get_state_space(n_actions)
+        SP = State_space(self.n_actions)
+        self.state_space = SP.get_state_space()
 
     def new_state(self, state: State, action: int) -> State:
         """As our MDP is deterministic, this function returns a new state.
@@ -115,9 +129,9 @@ class OneHotFeaturizer(Featurizer):
         feature[idx] = 1
         return feature
 
-class StateTransitions():
+class StateTransitions:
 
-    def __init__(self, n_actions: int, trees: dict) -> None:
+    def __init__(self, n_actions: int, trees: dict, SP: State_space) -> None:
         """The constructor method.
         Args:
             n_actions: number of actions
@@ -125,7 +139,8 @@ class StateTransitions():
         """
         self.n_actions = n_actions
         self.n_states = get_n_states(n_actions)
-        self.state_space = get_state_space(n_actions)
+        SP = State_space(n_actions)
+        self.state_space = SP.get_state_space()
         self.trees = trees
     
     def get_trajectories(self) -> list:
@@ -186,13 +201,92 @@ class StateTransitions():
 
         return p_transition
 
+    def get_p_action(self, reward) -> np.array:
+        """
+        Compute the local action probabilities (policy) required for the edge
+        frequency calculation for maximum entropy reinfocement learning.
+        
+        Args:
+            reward: The reward signal per state as table
+                `[state: Integer] -> reward: Float`.
+        Returns:
+            The local action probabilities (policy) as map
+            `[state: Integer, action: Integer] -> probability: Float`
+        """
+        p_transition = self.get_p_transition()
+        #er = np.exp(reward)
+        p_action = np.zeros((self.n_states,self.n_actions))
+
+        for i in range(self.n_states):
+            for j in range(self.n_actions):
+                p_action[i,j] = sum(p_transition[i,:,j]*np.exp(reward[i]))
+        
+        p_action /= p_action.sum(axis=1)[:,None]
+        p_action = np.nan_to_num(p_action, nan = 0)
+
+        return p_action
+
+class Action_transition:
+
+    def __init__(self, n_actions: int, trees: dict, SP: State_space, ST: StateTransitions) -> None:
+        """The constructor method.
+        Args:
+            n_actions: number of actions
+            trees: a dictionary mapping the tree's ID to the root node.
+        """
+        self.n_actions = n_actions
+        self.n_states = get_n_states(n_actions)
+        SP = State_space(n_actions)
+        self.action_space = SP.get_action_space()
+        ST = StateTransitions(n_actions, trees, SP)
+        self.trajectories = ST.get_trajectories()
+        self.state_transition = ST.get_transition()
+    
+    def get_action_transition(self):
+        """
+        returns:
+            a 2D list that records the order of mutations in each trajectory
+            (e.g. action_transition[0][0] --> the first action/mutation of the first trajectory)
+        """
+
+        action_transition = []
+        for path in self.state_transition:
+            actions = []
+            for i in range(1,len(path)):
+                action = [0]*self.n_actions
+                for j in range(self.n_actions):
+                    if path[i] != path[i-1]:
+                        action[i] = 1
+                        actions.append(action)
+                action_transition.append(actions)
+
+        return action_transition
+
+    def get_p_transition(self):
+        transitions = self.get_action_transition()
+        p_transition = np.zeros((self.n_actions, self.n_actions, self.n_actions))
+
+        for i in range(len(transitions)):
+            for j in range(len(transitions[i]) - 1):
+                current = self.action_space.index(tuple(transitions[i][j]))
+                next = self.action_space.index(tuple(transitions[i][j + 1]))
+                for n in range(self.n_actions):
+                    if transitions[i][j - 1][n] != transitions[i][j][n]:
+                        action = n
+                        p_transition[current, next, action] += 1
+
+        for i in range(self.n_actions):
+            if sum(sum(p_transition[i, :, :])) != 0:
+                p_transition[i, :, :] /= sum(sum(p_transition[i, :, :]))
+
+        return p_transition
 
     def get_p_action(self, reward):
         p_transition = self.get_p_transition()
         er = np.exp(reward)
-        p_action = np.zeros((self.n_states,self.n_actions))
+        p_action = np.zeros((self.n_actions,self.n_actions))
 
-        for i in range(self.n_states):
+        for i in range(self.n_actions):
             for j in range(self.n_actions):
                 p_action[i,j] = sum(p_transition[i,:,j]*er[i])
         
@@ -202,13 +296,13 @@ class StateTransitions():
 
 
 def get_features(featurizer: Featurizer, state_space):
-    '''
+    """
     Args:
         featurizer: mapping used to get the features for every single state
         state_space: a list of states.
     returns:
         A 2-D np array (n_state x dim_feature) that maps the state to its corresponding feature
-    '''
+    """
     features = []
     for state in state_space:
         features.append(featurizer.transform(state))
@@ -236,7 +330,7 @@ def expected_empirical_feature_counts_from_trajectories(
 
     # The number of trajectories
     m = len(trajectories)
-    state_space = get_state_space(n_actions=5)
+    #state_space = get_state_space(n_actions=5)
     # Get the default feature vector basing
     # on the first state in the first trajectory
     some_state = trajectories[0][0]
@@ -248,27 +342,41 @@ def expected_empirical_feature_counts_from_trajectories(
 
     # Initialize the dictionary with zero vectors
     counts = {state: get_default_feature() for state in mdp.state_space}
-    features = []
+    #features = []
+    features = np.zeros(len(featurizer.transform(trajectories[0][0])))
     for trajectory in trajectories:
         for state in trajectory:
             feature = featurizer.transform(state)
             counts[tuple(state)] += feature / m
-            features.append(feature / m)
+            #features.append(feature / m)
+            features += feature/m
 
     return counts, np.array(features)
 
-#def feature_expectation_from_trajectories(transitions, state_space,featurizer):
-#    feature_expectation = {state: 0 for state in state_space}
-#    m = len(transitions)
-#    for trajectory in transitions:
-#        for state in trajectory:
-#            idx = state_space.index(tuple(state))
-#            feature = featurizer.transform(tuple(state))
-#            feature_expectation[idx] += feature / m
+class Action_features:
+    def __init__(self, action_transitions, n_actions) -> None:
+        self.action_transitions = action_transitions
+        self.n_actions = n_actions
 
-#    return feature_expectation
+    def get_action_feature_expectation(self):
+        feature_expectation = np.zeros(self.n_actions)
+        total_action = 0
+        for transition in self.action_transitions:
+            for action in transition:
+                total_action += 1
+                feature_expectation += np.array(action)
 
-def expected_svf_from_policy(p_transition, p_action, eps=1e-5):
+        return feature_expectation/total_action
+
+    def get_action_initial_features(self):
+        initial_feature = np.zeros(self.n_actions)
+        for transition in self.action_transitions:
+            initial_feature += np.array(transition[0])
+        
+        return initial_feature/len(self.action_transitions)
+
+
+def expected_svf_from_policy(p_transition, p_action, p_initial, eps) -> np.array:
     """
     Compute the expected state visitation frequency using the given local
     action probabilities.
@@ -297,11 +405,8 @@ def expected_svf_from_policy(p_transition, p_action, eps=1e-5):
     Please note: this function is partially referenced from https://github.com/qzed/irl-maxent/blob/master/src/maxent.py line 63-114.
     """
     n_states, _, n_actions = p_transition.shape
-
-    p_initial = np.zeros(n_states)
-    p_initial[0] = 1
-
-    p_transition = [np.array(p_transition[:, :, a]) for a in range(5)]
+    
+    p_transition = [np.array(p_transition[:, :, a]) for a in range(n_actions)]
     # actual forward-computation of state expectations
     d = np.zeros(n_states)
 
@@ -314,7 +419,8 @@ def expected_svf_from_policy(p_transition, p_action, eps=1e-5):
     return d
 
 
-def irl(features, feature_expectation, optim, TS, eps, eps_esvf=1e-5):
+
+def irl(features, feature_expectation, optim, Transition, p_initial, eps, eps_esvf) -> np.array:
     """
     Compute the reward signal given the demonstration trajectories using the
     maximum entropy inverse reinforcement learning algorithm proposed in the
@@ -336,25 +442,36 @@ def irl(features, feature_expectation, optim, TS, eps, eps_esvf=1e-5):
 
         eps_svf: The threshold to be used as convergence criterion for the
         expected state-visitation frequency.
+    
+    Returns:
+        The reward per state as table `[state: Integer] -> reward: Float`.
 
     Please note: this function is partially referenced from https://github.com/qzed/irl-maxent/blob/master/src/maxent.py line 196-255.
     """
-    p_transition = TS.get_p_transition()
+    p_transition = Transition.get_p_transition()
     theta = np.zeros((len(features[0]),)) + 0.5
     delta = np.inf
 
     optim.reset(theta)
+    #max_iteration = 10000
+    #count = 0
     while delta > eps:
         theta_old = theta.copy()
+        # compute per-state reward
         reward = features.dot(theta)
-        #reward = np.zeros((n_states,)) + 0.5
-        p_action = TS.get_p_action(reward)
-        #print(p_action)
-        e_svf = expected_svf_from_policy(p_transition, p_action, eps_esvf)
+        p_action = Transition.get_p_action(reward)
+
+        # compute the gradient
+        e_svf = expected_svf_from_policy(p_transition, p_action, p_initial, eps_esvf)
         grad = feature_expectation - features.T.dot(e_svf)
 
-        optim.step(grad[-1])
+        # perform optimization step and compute delta for convergence
+        optim.step(grad)
         delta = np.max(np.abs(theta_old - theta))
-        
+        print(theta)
+        #count += 1
+
+    #print('D')
+    #print(e_svf)
     
     return features.dot(theta)
