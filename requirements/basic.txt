@@ -1,6 +1,5 @@
 anytree
 hydra-core
-irl-maxent
 numpy
 pandas
 typing_extensions

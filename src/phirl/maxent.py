@@ -23,7 +23,7 @@ from phirl._comp import Protocol
 
 def get_n_states(n_actions: int) -> int:
     """Calculates the number of states."""
-    return 2 ** n_actions
+    return 2**n_actions
 
 
 State = Tuple[int, ...]

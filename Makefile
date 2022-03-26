@@ -1,7 +1,7 @@
 all: black pytest
 
 black: 
-	black --check `find . -iname "*.py"`
+	black --check `find src tests scripts -iname "*.py"`
 
 pytest:
 	pytest
