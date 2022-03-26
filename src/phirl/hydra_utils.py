@@ -1,19 +1,16 @@
 """For some scenarios with very simple configuration,
 hydra needs somewhat verbose code.
-
 We wrap this code into two decorators.
 
 Usage example:
-
 import phirl.hydra_utils as hy
-
 
 @hy.config
 @dataclasses.dataclass
 class ConnConfig:
     host: str = "some-website.com"
     port: int = 1234
-
+    username: str = hy.MISSING
 
 @hy.main
 def connect(config: ConnConfig):
