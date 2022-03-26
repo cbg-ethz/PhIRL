@@ -14,14 +14,12 @@ Note: The function expected_svf_from_policy and irl is referenced from https://g
 License: https://github.com/qzed/irl-maxent/blob/master/LICENSE 
 """
 import itertools
-from pyexpat import features
 from typing import cast, Dict, Iterable, Sequence, Tuple
+from matplotlib.pyplot import axis
 
 import numpy as np
-from pandas import array
 import phirl.api as ph
 from phirl._comp import Protocol
-import irl_maxent as me
 
 
 def get_n_states(n_actions: int) -> int:
@@ -185,11 +183,12 @@ class StateTransitions:
         """
         transitions = self.get_transition()
         p_transition = np.zeros((self.n_states, self.n_states, self.n_actions))
-
+        state_to_state = np.zeros((self.n_states, self.n_states))
         for i in range(len(transitions)):
             for j in range(len(transitions[i]) - 1):
                 current = self.state_space.index(tuple(transitions[i][j]))
                 next = self.state_space.index(tuple(transitions[i][j + 1]))
+                state_to_state[current, next] += 1
                 for n in range(self.n_actions):
                     if transitions[i][j - 1][n] != transitions[i][j][n]:
                         action = n
@@ -199,9 +198,9 @@ class StateTransitions:
             if sum(sum(p_transition[i, :, :])) != 0:
                 p_transition[i, :, :] /= sum(sum(p_transition[i, :, :]))
 
-        return p_transition
+        return p_transition, state_to_state
 
-    def get_p_action(self, reward) -> np.array:
+    def get_p_action_s_reward(self, reward) -> np.array:
         """
         Compute the local action probabilities (policy) required for the edge
         frequency calculation for maximum entropy reinfocement learning.
@@ -213,85 +212,71 @@ class StateTransitions:
             The local action probabilities (policy) as map
             `[state: Integer, action: Integer] -> probability: Float`
         """
-        p_transition = self.get_p_transition()
-        #er = np.exp(reward)
-        p_action = np.zeros((self.n_states,self.n_actions))
-
+        p_transition, state_to_state = self.get_p_transition()
+        er = np.exp(reward)
+    
+        terminal = []
         for i in range(self.n_states):
-            for j in range(self.n_actions):
-                p_action[i,j] = sum(p_transition[i,:,j]*np.exp(reward[i]))
+            if np.all((state_to_state[i,:] == 0)):
+                terminal.append(i)
         
-        p_action /= p_action.sum(axis=1)[:,None]
+        zs = np.zeros(self.n_states)
+        zs[terminal] = 1
+        
+        p = [np.array(p_transition[:, :, a]) for a in range(self.n_actions)]
+    
+        for _ in range(2*self.n_states):
+            za = np.array([er * p[a].dot(zs) for a in range(self.n_actions)]).T
+            zs = za.sum(axis=1)
+            zs[terminal] = 1
+            
+        p_action = za / zs[:, None]
         p_action = np.nan_to_num(p_action, nan = 0)
-
+    
         return p_action
 
-class Action_transition:
-
-    def __init__(self, n_actions: int, trees: dict, SP: State_space, ST: StateTransitions) -> None:
-        """The constructor method.
-        Args:
-            n_actions: number of actions
-            trees: a dictionary mapping the tree's ID to the root node.
+    def get_p_action_a_reward(self, reward):
         """
-        self.n_actions = n_actions
-        self.n_states = get_n_states(n_actions)
-        SP = State_space(n_actions)
-        self.action_space = SP.get_action_space()
-        ST = StateTransitions(n_actions, trees, SP)
-        self.trajectories = ST.get_trajectories()
-        self.state_transition = ST.get_transition()
-    
-    def get_action_transition(self):
-        """
-        returns:
-            a 2D list that records the order of mutations in each trajectory
-            (e.g. action_transition[0][0] --> the first action/mutation of the first trajectory)
-        """
-
-        action_transition = []
-        for path in self.state_transition:
-            actions = []
-            for i in range(1,len(path)):
-                action = [0]*self.n_actions
-                for j in range(self.n_actions):
-                    if path[i] != path[i-1]:
-                        action[i] = 1
-                        actions.append(action)
-                action_transition.append(actions)
-
-        return action_transition
-
-    def get_p_transition(self):
-        transitions = self.get_action_transition()
-        p_transition = np.zeros((self.n_actions, self.n_actions, self.n_actions))
-
-        for i in range(len(transitions)):
-            for j in range(len(transitions[i]) - 1):
-                current = self.action_space.index(tuple(transitions[i][j]))
-                next = self.action_space.index(tuple(transitions[i][j + 1]))
-                for n in range(self.n_actions):
-                    if transitions[i][j - 1][n] != transitions[i][j][n]:
-                        action = n
-                        p_transition[current, next, action] += 1
-
-        for i in range(self.n_actions):
-            if sum(sum(p_transition[i, :, :])) != 0:
-                p_transition[i, :, :] /= sum(sum(p_transition[i, :, :]))
-
-        return p_transition
-
-    def get_p_action(self, reward):
-        p_transition = self.get_p_transition()
-        er = np.exp(reward)
-        p_action = np.zeros((self.n_actions,self.n_actions))
-
-        for i in range(self.n_actions):
-            for j in range(self.n_actions):
-                p_action[i,j] = sum(p_transition[i,:,j]*er[i])
+        Compute the local action probabilities (policy) required for the edge
+        frequency calculation for maximum entropy reinfocement learning.
         
-        p_action /= p_action.sum(axis=1)[:,None]
+        Args:
+            reward: The reward signal per action as table
+                `[state: Integer] -> reward: Float`.
+        Returns:
+            The local action probabilities (policy) as map
+            `[state: Integer, action: Integer] -> probability: Float`
+        """
+
+        p_transition, state_to_state = self.get_p_transition()
+    
+        terminal = []
+        for i in range(self.n_states):
+            if np.all((state_to_state[i,:] == 0)):
+                terminal.append(i)
+        
+        zs = np.zeros(self.n_states)
+        zs[terminal] = 1
+        
+        for _ in range(2 * self.n_states):                       
+        # reset action values to zero
+            za = np.zeros((self.n_states, self.n_actions))            # za: action partition function
+
+            # for each state-action pair
+            for s_from in range(self.n_states):
+                for a in range(self.n_actions):
+
+                # sum over s_to
+                    for s_to in range(self.n_states):
+                        za[s_from, a] += p_transition[s_from, s_to, a] * np.exp(reward[a]) * zs[s_to]
+            
+            # sum over all actions
+            zs = za.sum(axis=1)
+            zs[terminal] = 1
+            
+        p_action = za / zs[:, None]
         p_action = np.nan_to_num(p_action, nan = 0)
+    
         return p_action
 
 
@@ -353,28 +338,6 @@ def expected_empirical_feature_counts_from_trajectories(
 
     return counts, np.array(features)
 
-class Action_features:
-    def __init__(self, action_transitions, n_actions) -> None:
-        self.action_transitions = action_transitions
-        self.n_actions = n_actions
-
-    def get_action_feature_expectation(self):
-        feature_expectation = np.zeros(self.n_actions)
-        total_action = 0
-        for transition in self.action_transitions:
-            for action in transition:
-                total_action += 1
-                feature_expectation += np.array(action)
-
-        return feature_expectation/total_action
-
-    def get_action_initial_features(self):
-        initial_feature = np.zeros(self.n_actions)
-        for transition in self.action_transitions:
-            initial_feature += np.array(transition[0])
-        
-        return initial_feature/len(self.action_transitions)
-
 
 def expected_svf_from_policy(p_transition, p_action, p_initial, eps) -> np.array:
     """
@@ -406,21 +369,22 @@ def expected_svf_from_policy(p_transition, p_action, p_initial, eps) -> np.array
     """
     n_states, _, n_actions = p_transition.shape
     
+    p_transition = np.copy(p_transition)
+    # set-up transition matrices for each action
     p_transition = [np.array(p_transition[:, :, a]) for a in range(n_actions)]
     # actual forward-computation of state expectations
     d = np.zeros(n_states)
 
     delta = np.inf
     while delta > eps:
-        for i in range(n_actions):
-            d_ = [p_transition[a].T.dot(p_action[:, a] * d) for a in range(n_actions)]
-            d_ = p_initial + np.array(d_).sum(axis=0)
+        d_ = [p_transition[a].T.dot(p_action[:, a] * d) for a in range(n_actions)]
+        d_ = p_initial + np.array(d_).sum(axis=0)
+
         delta, d = np.max(np.abs(d_ - d)), d_
     return d
 
 
-
-def irl(features, feature_expectation, optim, Transition, p_initial, eps, eps_esvf) -> np.array:
+class IRL:
     """
     Compute the reward signal given the demonstration trajectories using the
     maximum entropy inverse reinforcement learning algorithm proposed in the
@@ -442,36 +406,91 @@ def irl(features, feature_expectation, optim, Transition, p_initial, eps, eps_es
 
         eps_svf: The threshold to be used as convergence criterion for the
         expected state-visitation frequency.
-    
-    Returns:
-        The reward per state as table `[state: Integer] -> reward: Float`.
-
-    Please note: this function is partially referenced from https://github.com/qzed/irl-maxent/blob/master/src/maxent.py line 196-255.
     """
-    p_transition = Transition.get_p_transition()
-    theta = np.zeros((len(features[0]),)) + 0.5
-    delta = np.inf
 
-    optim.reset(theta)
-    #max_iteration = 10000
-    #count = 0
-    while delta > eps:
-        theta_old = theta.copy()
-        # compute per-state reward
-        reward = features.dot(theta)
-        p_action = Transition.get_p_action(reward)
+    def __init__(self, features, feature_expectation, optim, Transition, p_initial, eps, eps_esvf) -> None:
+        self.features = features
+        self.feature_expectation = feature_expectation
+        self.optim = optim
+        self.Transition = Transition
+        self.p_initial = p_initial
+        self.eps = eps
+        self.eps_esvf = eps_esvf
 
-        # compute the gradient
-        e_svf = expected_svf_from_policy(p_transition, p_action, p_initial, eps_esvf)
-        grad = feature_expectation - features.T.dot(e_svf)
 
-        # perform optimization step and compute delta for convergence
-        optim.step(grad)
-        delta = np.max(np.abs(theta_old - theta))
-        print(theta)
-        #count += 1
+    def irl_state(self) -> np.array:
+        """
+        This function learns the reward function for states. 
 
-    #print('D')
-    #print(e_svf)
+        Returns:
+            The reward per state as table `[state: Integer] -> reward: Float`.
+
+        Please note: this function is partially referenced from https://github.com/qzed/irl-maxent/blob/master/src/maxent.py line 196-255.
+        """
+        p_transition,_ = self.Transition.get_p_transition()
+        theta = np.zeros((len(self.features[0]),)) + 0.5
+        delta = np.inf
+
+        self.optim.reset(theta)
+        while delta > self.eps:
+            theta_old = theta.copy()
+            # compute per-state reward
+            reward = self.features.dot(theta)
+            p_action = self.Transition.get_p_action_s_reward(reward)
+            
+            # compute the gradient
+            e_svf = expected_svf_from_policy(p_transition, p_action, self.p_initial, self.eps_esvf)
+            grad = self.feature_expectation - self.features.T.dot(e_svf)
+
+            # perform optimization step and compute delta for convergence
+            self.optim.step(grad)
+            #print(grad)
+            delta = np.max(np.abs(theta_old - theta))
+        
     
-    return features.dot(theta)
+        return self.features.dot(theta)
+
+    def irl_action(self, action_features) -> np.array:
+        """
+        This function learns the reward function for action. 
+
+        Returns:
+            The reward per action as table `[action: Integer] -> reward: Float`.
+
+        Please note: this function is partially referenced from https://github.com/qzed/irl-maxent/blob/master/src/maxent.py line 196-255.
+        """
+
+        p_transition, _ = self.Transition.get_p_transition()
+        theta = np.zeros((len(action_features[0]),)) + 0.5
+        delta = np.inf
+
+        self.optim.reset(theta)
+        while delta > self.eps:
+            theta_old = theta.copy()
+            # compute per-state reward
+            reward = action_features.dot(theta)
+            p_action = self.Transition.get_p_action_a_reward(reward)
+            
+            # compute the gradient
+            e_svf = expected_svf_from_policy(p_transition, p_action, self.p_initial, self.eps_esvf)
+            grad = self.feature_expectation - self.features.T.dot(e_svf)
+
+            # perform optimization step and compute delta for convergence
+            self.optim.step(grad)
+            #print(grad)
+            delta = np.max(np.abs(theta_old - theta))
+            
+        
+        return action_features.dot(theta)
+
+    def additive_reward(self, n_actions, action_features):
+        n_states = get_n_states(n_actions)
+        additive_state_action_reward = np.zeros((n_states, n_actions))
+        state_reward = self.irl_state()
+        action_reward = self.irl_action(action_features)
+
+        for i in range(n_states):
+            for j in range(n_actions):
+                additive_state_action_reward[i,j] = state_reward[i] + action_reward[j]
+        
+        return additive_state_action_reward
