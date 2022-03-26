@@ -6,6 +6,7 @@ Note:
     The data path must be absolute not relative.
 """
 import dataclasses
+from locale import normalize
 import logging
 from typing import Any, Dict, Optional
 
@@ -69,42 +70,27 @@ def main(config: MainConfig) -> None:
     # featurizer = OneHotFeaturizer(state_space)
     counts, feature_expectation = expected_empirical_feature_counts_from_trajectories(mdp, featurizer=IdentityFeaturizer(Featurizer), trajectories=transitions)
     #d = expected_svf_from_policy(p_transition, p_action, eps=1e-5)
-    logger.info("Learning the reward function...")
-    optim = me.optimizer.Sga(lr=me.optimizer.linear_decay(lr0=0.01))
+    
+    logger.info("Learning the state reward function...")
+    optim = me.optimizer.ExpSga(lr=me.optimizer.linear_decay(lr0=0.2), normalize=True)
     p_initial = np.zeros(n_states)
     p_initial[0] = 1
-    reward = irl(features, feature_expectation, optim, TS, p_initial, eps=1e-5, eps_esvf=1e-5)
+    irl = IRL(features, feature_expectation, optim, TS, p_initial, eps=1e-4, eps_esvf=1e-5)
+    s_reward = irl.irl_state()
+
+    logger.info("Learning the action reward function...")
+    action_space = SP.get_action_space()
+    action_features = get_features(IdentityFeaturizer(Featurizer), action_space)
+    a_reward = irl.irl_action(action_features)
+    s_a_reward = irl.additive_reward(config.n_action, action_features)
     
     logger.info(f"Feature expectation: {feature_expectation}")
-    #logger.info(f"Expected SVF: {d}")
-    #logger.info(f"Local action probabilities: {p_action}")
-    #logger.info(f"Local transition probabilities: {p_transition}")
     logger.info(f"Feature dimension: {len(features[1])}")
-    logger.info(f"Reward function: {reward}")
+    logger.info(f"State reward function: {s_reward}")
+    logger.info(f"Action reward function: {a_reward}")
+    logger.info(f"Additive reward function: {s_a_reward}")
 
 # ************************************************************************
-    logger.info("--------------------------------------------------------------")
-    logger.info("Starting new run for actions...")
-    AT = Action_transition(config.n_action, trees, SP, TS)
-    action_transition = AT.get_action_transition()
-    #print(action_transition[1])
-    action_space = SP.get_action_space()
-    #print(action_space)
-    p_action_transition = AT.get_p_transition()
-    #p_next_action = AT.get_p_next_action()
-    AF = Action_features(action_transition, config.n_action)
-    action_features = get_features(IdentityFeaturizer(Featurizer), action_space)
-    action_feature_expectation = AF.get_action_feature_expectation()
-
-    p_initial = AF.get_action_initial_features()
-    logger.info(f"Initial probability: {p_initial}")
-    logger.info("Learning the reward function...")
-
-    #optim = me.optimizer.Sga(lr=1e-3)
-    #action_reward = irl(action_features, action_feature_expectation, optim, AT, p_initial, eps=1e-4, eps_esvf=1e-5)
-    
-    #logger.info(f"Feature expectation: {action_feature_expectation}")
-    #logger.info(f"Reward function: {action_reward}")
 
 
 if __name__ == "__main__":
