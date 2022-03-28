@@ -64,6 +64,8 @@ class TestDeterministicTreeMDP:
             with pytest.raises(ValueError):
                 mdp.new_state(state, action=-1)
             with pytest.raises(ValueError):
+                mdp.new_state(state, action=0)
+            with pytest.raises(ValueError):
                 mdp.new_state(state, action=n_actions + 1)
             with pytest.raises(ValueError):
                 mdp.new_state(state, action=n_actions + 12)
