@@ -29,7 +29,7 @@ jobs:
     - name: Install the modules
       run: pip install .
     - name: Check whether black has been applied
-      run: black --check `find . -iname "*.py"`
+      run: black --check `find src tests scripts -iname "*.py"`
     - name: Test with pytest
       run: |
         python -m pytest tests
