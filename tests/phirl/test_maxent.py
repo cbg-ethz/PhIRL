@@ -14,7 +14,7 @@ def test_n_states(n_actions: int) -> None:
 
 
 @pytest.mark.parametrize("n_actions", (2, 5, 7))
-def test_state_space(n_actions) -> None:
+def test_state_space(n_actions: int) -> None:
     space = me.get_state_space(n_actions)
     size = me.get_n_states(n_actions)
 
@@ -189,3 +189,52 @@ class TestExpectedEmpiricalFeatureCounts:
         nptest.assert_equal(feature_counts[(1, 0)], 1 / 3 * featurizer.transform((1, 0)))
         nptest.assert_equal(feature_counts[(0, 1)], 1 / 3 * featurizer.transform((0, 1)))
         nptest.assert_equal(feature_counts[(1, 1)], np.zeros(featurizer.shape))
+
+
+class TestTrajectory:
+    def test_init_raises(self) -> None:
+        with pytest.raises(ValueError):
+            me.Trajectory(states=[(0, 1), (0, 0)], actions=[1, 2, 3])
+        with pytest.raises(ValueError):
+            me.Trajectory(states=[], actions=[2, 3])
+        with pytest.raises(ValueError):
+            me.Trajectory(states=[(0, 0), (0, 1), (1, 1)], actions=[1])
+
+    def test_init_ok(self) -> None:
+        states = ((0, 1), (0, 0), (1, 1))
+        actions = (2, 5)
+        trajectory = me.Trajectory(states=states, actions=actions)
+
+        assert trajectory.states == states
+        assert trajectory.actions == actions
+
+    def test_equality(self) -> None:
+        states = ((0, 1), (0, 0), (1, 1))
+        actions = (2, 5)
+        t1 = me.Trajectory(states=states, actions=actions)
+        t2 = me.Trajectory(states=list(states), actions=list(actions))
+        assert t1 == t2
+
+
+def test_unroll_trajectory() -> None:
+    mdp = me.DeterministicTreeMDP(n_actions=2)
+    states = [(0, 0), (0, 1), (1, 1)]
+    actions = [2, 1]
+    trajectory = me.Trajectory(
+        states=states,
+        actions=actions,
+    )
+
+    trajectory_ = me.unroll_trajectory(actions=actions, initial_state=(0, 0), mdp=mdp)
+    assert trajectory == trajectory_
+
+
+@pytest.mark.parametrize("n_actions", (5, 10))
+def test_unroll_trajectory2(n_actions: int) -> None:
+    mdp = me.DeterministicTreeMDP(n_actions=n_actions)
+    actions = range(1, n_actions + 1)
+    states = [tuple([1] * i + [0] * (n_actions - i)) for i in range(0, n_actions + 1)]
+    trajectory = me.Trajectory(states=states, actions=actions)
+    trajectory_ = me.unroll_trajectory(actions=actions, initial_state=states[0], mdp=mdp)
+
+    assert trajectory == trajectory_, f"{trajectory} != {trajectory_}"

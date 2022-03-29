@@ -14,7 +14,7 @@ B.D. Ziebart et al., Maximum Entropy Inverse Reinforcement Learning,
 AAAI (2008), https://www.aaai.org/Papers/AAAI/2008/AAAI08-227.pdf
 """
 import itertools
-from typing import cast, Dict, Iterable, Sequence, Tuple
+from typing import cast, Dict, Iterable, List, Sequence, Tuple
 
 import numpy as np
 
@@ -26,7 +26,8 @@ def get_n_states(n_actions: int) -> int:
     return 2**n_actions
 
 
-State = Tuple[int, ...]
+Action = int
+State = Tuple[Action, ...]
 Space = Tuple[State, ...]
 
 
@@ -38,6 +39,35 @@ def get_state_space(n_actions: int) -> Space:
         `2 ** n_actions`.
     """
     return tuple(cast(State, state) for state in itertools.product([0, 1], repeat=n_actions))
+
+
+class Trajectory:
+    """An object representing an MDP trajectory.
+
+    Attrs:
+        states: a tuple of states visited by agent, length n
+        actions: tuple of actions executed by agent, length n-1
+
+    Note:
+        1. `actions[k]` corresponds to the action executed by the agent between
+          `states[k] and `states[k+1]`
+        2. The `states` and `actions` do *not* have equal lengths.
+    """
+
+    def __init__(self, states: Sequence[State], actions: Sequence[Action]) -> None:
+        self.states: Tuple[State] = tuple(states)
+        self.actions: Tuple[Action] = tuple(actions)
+
+        if len(actions) != len(states) - 1:
+            raise ValueError("Length of actions must be the length of states minus 1.")
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(states={self.states}, actions={self.actions})"
+
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, type(self)):
+            return False
+        return self.states == other.states and self.actions == other.actions
 
 
 class DeterministicTreeMDP:
@@ -80,6 +110,52 @@ class DeterministicTreeMDP:
         new_state = list(state)
         new_state[action - 1] = 1
         return tuple(new_state)
+
+
+def unroll_trajectory(
+    actions: Sequence[Action], initial_state: State, mdp: DeterministicTreeMDP
+) -> Trajectory:
+    """Using a *deterministic* MDP simulates the trajectory, basing on executed `actions`
+    starting at `initial_state`.
+
+    Args:
+        actions: a sequence of actions
+        initial_state: starting state
+        mdp: deterministic transition function
+
+    Returns:
+        the trajectory (both states and actions)
+
+    See Also:
+        unroll_trajectories, a convenient function for generating multiple trajectories
+    """
+    states = [initial_state]
+    for action in actions:
+        new_state = mdp.new_state(state=states[-1], action=action)
+        states.append(new_state)
+
+    return Trajectory(states=states, actions=actions)
+
+
+def unroll_trajectories(
+    action_trajectories: Iterable[Sequence[Action]],
+    initial_state: State,
+    mdp: DeterministicTreeMDP,
+) -> List[Trajectory]:
+    """This function applies `unroll_trajectory` to each action sequence
+    in `action_trajectories`, assuming that all of these start at `initial_state`
+    and follow a deterministic transition function (`mdp`).
+
+    Note:
+        The `initial_state` needs to be immutable, as we don't copy it to each trajectory.
+
+    See Also:
+        unroll_trajectory, the backend of this function
+    """
+    return [
+        unroll_trajectory(actions=actions, initial_state=initial_state, mdp=mdp)
+        for actions in action_trajectories
+    ]
 
 
 class Featurizer(Protocol):
