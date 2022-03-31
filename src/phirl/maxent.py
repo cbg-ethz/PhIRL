@@ -1,25 +1,27 @@
 """Submodule implementing the MaxEnt IRL
 approach to finding the reward function.
+
 The MDP is deterministic and each state
 is a set of already acquired mutations.
 We will encode each state as a binary tuple
 (0, 1, 0, ..., 0),
 and 1 on ith position means that the mutation
 i+1 has been acquired.
+
 MaxEnt IRL was proposed in
 B.D. Ziebart et al., Maximum Entropy Inverse Reinforcement Learning,
 AAAI (2008), https://www.aaai.org/Papers/AAAI/2008/AAAI08-227.pdf
-
-Note: The function expected_svf_from_policy and irl is referenced from https://github.com/qzed/irl-maxent/blob/master/src/maxent.py (Author: Maximilian Luz).
-License: https://github.com/qzed/irl-maxent/blob/master/LICENSE 
 """
 import itertools
-from typing import cast, Dict, Iterable, Sequence, Tuple
+from platform import node
+from turtle import pen
+from typing import List, cast, Dict, Iterable, Sequence, Tuple
 from matplotlib.pyplot import axis
 
 import numpy as np
 import phirl.api as ph
 from phirl._comp import Protocol
+import random
 
 
 def get_n_states(n_actions: int) -> int:
@@ -30,26 +32,23 @@ def get_n_states(n_actions: int) -> int:
 State = Tuple[int, ...]
 Space = Tuple[State, ...]
 
-class State_space:
-    def __init__(self, n_action):
-        self.n_actions = n_action
-        
-    def get_state_space(self) -> Space:
-        """Returns the list of states.
-        Note:
-            The size of the space of states grows as
-            `2 ** n_actions`.
-        """
-        return tuple(cast(State, state) for state in itertools.product([0, 1], repeat=self.n_actions))
-    
-    def get_action_space(self) -> Space:
-        action_space = []
-        for i in range(self.n_actions):
-            action = [0]*self.n_actions
-            action[i] = 1
-            action_space.append(tuple(action))
+def get_state_space(n_actions: int) -> Space:
+     """Returns the list of states.
 
-        return action_space
+     Note:
+         The size of the space of states grows as
+         `2 ** n_actions`.
+     """
+     return tuple(cast(State, state) for state in itertools.product([0, 1], repeat=n_actions))
+
+def get_action_space(n_actions):
+    action_space = []
+    for i in range(n_actions):
+        action = [0]*n_actions
+        action[i] = 1
+        action_space.append(tuple(action))
+
+    return np.array(action_space)
 
 class DeterministicTreeMDP:
     """This class defines a deterministic MDP.
@@ -63,15 +62,14 @@ class DeterministicTreeMDP:
         action `i+1`th is present.
     """
 
-    def __init__(self, n_actions: int, SP: State_space) -> None:
+    def __init__(self, n_actions: int) -> None:
         """The constructor method.
         Args:
             n_actions: number of actions in the MDP
         """
         self.n_actions = n_actions
         self.n_states = get_n_states(n_actions)
-        SP = State_space(self.n_actions)
-        self.state_space = SP.get_state_space()
+        self.state_space = get_state_space(n_actions)
 
     def new_state(self, state: State, action: int) -> State:
         """As our MDP is deterministic, this function returns a new state.
@@ -97,7 +95,11 @@ class Featurizer(Protocol):
     """
 
     def transform(self, state: State) -> np.ndarray:
-        pass
+        raise NotImplementedError
+
+    @property
+    def shape(self) -> Tuple[int, ...]:
+        raise NotImplementedError
 
 
 class IdentityFeaturizer(Featurizer):
@@ -106,8 +108,21 @@ class IdentityFeaturizer(Featurizer):
     The feature space dimension is the number of actions.
     """
 
+    def __init__(self, n_actions: int) -> None:
+        """
+        Args:
+            n_actions: number of actions
+        """
+        self._n = n_actions
+
     def transform(self, state: State) -> np.ndarray:
+        if len(state) != self._n:
+            raise ValueError(f"State {state} should be of length {self._n}.")
         return np.asarray(state, dtype=float)
+
+    @property
+    def shape(self) -> Tuple[int, ...]:
+        return (self._n,)
 
 
 class OneHotFeaturizer(Featurizer):
@@ -120,59 +135,193 @@ class OneHotFeaturizer(Featurizer):
     def __init__(self, space: Space) -> None:
         self.space = space
         self.n_states = len(space)
+        # Mapping from index (starting at 0) to the state
+        self._index_to_state = dict(enumerate(space))
+         # The inverse mapping
+        self._state_to_index = dict(zip(self._index_to_state.values(), self._index_to_state.keys()))
 
     def transform(self, state: State) -> np.ndarray:
         idx = self.space.index(tuple(state))
         feature = np.zeros(self.n_states, dtype=float)
         feature[idx] = 1
         return feature
-
-class StateTransitions:
-
-    def __init__(self, n_actions: int, trees: dict, SP: State_space) -> None:
-        """The constructor method.
-        Args:
-            n_actions: number of actions
-            trees: a dictionary mapping the tree's ID to the root node.
-        """
-        self.n_actions = n_actions
-        self.n_states = get_n_states(n_actions)
-        SP = State_space(n_actions)
-        self.state_space = SP.get_state_space()
-        self.trees = trees
     
-    def get_trajectories(self) -> list:
-        """
-        returns:
-            a list of trajectories that includes nodes and mutations from root to leaf
-        """
-        trajectories = []
-        for tree_id, tree_node in self.trees.items():
-            trajectory = ph.list_all_trajectories(tree_node, max_length=20)
-            trajectories.append(trajectory)
+    @property
+    def shape(self) -> Tuple[int, ...]:
+        return (self.n_states,)
 
-        return trajectories
-
-    def get_transition(self) -> list:
+    def state_to_index(self, state: State) -> int:
+        """Maps the state to its index, which is the
+        only non-zero coordinate in the one-hot encoding (starting at 0).
+        Args:
+            state: state
+        Returns:
+            index, starting at 0
+        See Also:
+            index_to_state, the inverse mapping
         """
-        returns:
-            a 2D list that records the order of states in each trajectory
-            (e.g. all_transition[0][0] --> the initial state of the first trajectory)
-        """
-        trajectories = self.get_trajectories()
-        transitions = []
-        for trajectory in trajectories: 
-            single_transition = [[0, 0, 0, 0, 0]]
-            state = [0, 0, 0, 0, 0]
-        
-            for j in range(len(trajectory[0])):
-                if trajectory[0][j].mutation > 0:
-                    state[trajectory[0][j].mutation - 1] = 1
-                    single_transition.append(state[:])
-            transitions.append(single_transition)
-        return transitions
+        return self._state_to_index[state]
 
-    def get_p_transition(self) -> np.array:
+    def index_to_state(self, index: int) -> State:
+        """For a given `index` returns a state which
+        is represented by a one-hot vector with 1 at
+        position `index`.
+        Args:
+            index: number between 0 and `n_states` - 1
+        Returns:
+            the state which will be represented by the
+            one-hot vector specified by `index`
+        See Also:
+            state_to_index, the inverse mapping
+        """
+        return self._index_to_state[index]
+
+Action = List[int]
+
+def get_action_of_trajectories(trees, max_length=20) -> List[List[Action]]:
+    """This function generates a list of actions of each trajectory
+    """
+    action_of_trajectories = []
+    for tree_node in trees.values():
+        action_each_trajectory = ph.list_all_trajectories(tree_node, max_length=20)
+        action_of_trajectories.append(action_each_trajectory)
+
+    actions = []
+    for action_each_trajectory in action_of_trajectories: 
+        action = []
+        for nodes in action_each_trajectory:
+            for node in nodes:
+                if node.mutation > 0:
+                    action.append(node.mutation)
+        actions.append(action)
+
+    return actions
+
+
+class Trajectory:
+    """An object representing an MDP trajectory.
+    Attrs:
+        states: a tuple of states visited by agent, length n
+        actions: tuple of actions executed by agent, length n-1
+    Note:
+        1. `actions[k]` corresponds to the action executed by the agent between
+          `states[k] and `states[k+1]`
+        2. The `states` and `actions` do *not* have equal lengths.
+    """
+
+    def __init__(self, states: Sequence[State], actions: Sequence[Action]) -> None:
+        self.states: Tuple[State] = tuple(states)
+        self.actions: Tuple[Action] = tuple(actions)
+
+        if len(actions) != len(states) - 1:
+            raise ValueError("Length of actions must be the length of states minus 1.")
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(states={self.states}, actions={self.actions})"
+
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, type(self)):
+            return False
+        return self.states == other.states and self.actions == other.actions
+
+
+def unroll_trajectory(
+    actions: Sequence[Action], initial_state: State, mdp: DeterministicTreeMDP
+) -> Trajectory:
+    """Using a *deterministic* MDP simulates the trajectory, basing on executed `actions`
+    starting at `initial_state`.
+    Args:
+        actions: a sequence of actions
+        initial_state: starting state
+        mdp: deterministic transition function
+    Returns:
+        the trajectory (both states and actions)
+    See Also:
+        unroll_trajectories, a convenient function for generating multiple trajectories
+    """
+    states = [initial_state]
+    for action in actions:
+        new_state = mdp.new_state(state=states[-1], action=action)
+        states.append(new_state)
+
+    return Trajectory(states=states, actions=actions)
+
+
+def unroll_trajectories(
+    action_trajectories: Iterable[Sequence[Action]],
+    initial_state: State,
+    mdp: DeterministicTreeMDP,
+) -> List[Trajectory]:
+    """This function applies `unroll_trajectory` to each action sequence
+    in `action_trajectories`, assuming that all of these start at `initial_state`
+    and follow a deterministic transition function (`mdp`).
+    Note:
+        The `initial_state` needs to be immutable, as we don't copy it to each trajectory.
+    See Also:
+        unroll_trajectory, the backend of this function
+    """
+    return [
+        unroll_trajectory(actions=actions, initial_state=initial_state, mdp=mdp)
+        for actions in action_trajectories
+    ]
+
+def get_state_transition_trajectories(trajectories: Iterable[Sequence[State]]):
+    """This function extract the state-only trajectories from `unroll_trajectories` function.
+    """
+    state_trajectories = []
+    for trajectory in trajectories:
+        state_trajectories.append(trajectory.states)
+    
+    return state_trajectories
+
+def expected_empirical_feature_counts(
+     mdp: DeterministicTreeMDP,
+     featurizer: Featurizer,
+     trajectories: Iterable[
+         Sequence[State],
+     ],
+ ) -> Dict[State, np.ndarray]:
+     """Counts expected empirical feature counts, which is
+     `\\tilde f` on page 2 (1434)
+     in B.D. Ziebart et al., Maximum Entropy Inverse Reinforcement Learning.
+
+     Args:
+         mdp: underlying deterministic MDP
+         featurizer: mapping used to get the features for every single state
+         trajectories: a set of trajectories. Each trajectory is a sequence of states.
+
+     Returns:
+         dictionary mapping all states in MDP to their expected empirical
+         feature counts
+     """
+     trajectories = list(trajectories)
+
+     # The number of trajectories
+     m = len(trajectories)
+
+     def get_default_feature() -> np.ndarray:
+         """Zeros vector, which will be returned
+         for the states that have not been visited at all."""
+         return np.zeros(featurizer.shape)
+
+     # Initialize the dictionary with zero vectors
+     counts = {state: get_default_feature() for state in mdp.state_space}
+
+     for trajectory in trajectories:
+         for state in trajectory:
+             feature = featurizer.transform(state)
+             counts[state] += feature / m
+
+     return counts
+
+
+
+def get_p_transition(
+    n_states: int, 
+    n_actions: int, 
+    state_space: Space, 
+    trajectories: Iterable[
+        Sequence[State]]) -> np.ndarray:
         """
         returns:
             p_transition: `[from: Integer, to: Integer, action: Integer] -> probability: Float`
@@ -181,106 +330,72 @@ class StateTransitions:
             p_action: `[state: Integer, action: Integer] -> probability: Float`
             Local action probabilities
         """
-        transitions = self.get_transition()
-        p_transition = np.zeros((self.n_states, self.n_states, self.n_actions))
-        state_to_state = np.zeros((self.n_states, self.n_states))
-        for i in range(len(transitions)):
-            for j in range(len(transitions[i]) - 1):
-                current = self.state_space.index(tuple(transitions[i][j]))
-                next = self.state_space.index(tuple(transitions[i][j + 1]))
-                state_to_state[current, next] += 1
-                for n in range(self.n_actions):
-                    if transitions[i][j - 1][n] != transitions[i][j][n]:
+        p_transition = np.zeros((n_states, n_states, n_actions))
+       
+
+        for i in range(len(trajectories)):
+            for j in range(1,len(trajectories[i])):
+                current = state_space.index(trajectories[i][j-1])
+                next = state_space.index(trajectories[i][j])
+                
+                for n in range(n_actions):
+                    if trajectories[i][j - 1][n] != trajectories[i][j][n]:
                         action = n
                         p_transition[current, next, action] += 1
 
-        for i in range(self.n_states):
+        for i in range(n_states):
             if sum(sum(p_transition[i, :, :])) != 0:
                 p_transition[i, :, :] /= sum(sum(p_transition[i, :, :]))
 
-        return p_transition, state_to_state
+        return p_transition
 
-    def get_p_action_s_reward(self, reward) -> np.array:
-        """
-        Compute the local action probabilities (policy) required for the edge
+def get_p_action(n_states: int, n_actions: int, reward: np.ndarray, state_space: Space):
+    """
+    Compute the local action probabilities (policy) required for the edge
         frequency calculation for maximum entropy reinfocement learning.
         
         Args:
+            n_states: 
             reward: The reward signal per state as table
                 `[state: Integer] -> reward: Float`.
         Returns:
             The local action probabilities (policy) as map
             `[state: Integer, action: Integer] -> probability: Float`
-        """
-        p_transition, state_to_state = self.get_p_transition()
-        er = np.exp(reward)
-    
-        terminal = []
-        for i in range(self.n_states):
-            if np.all((state_to_state[i,:] == 0)):
-                terminal.append(i)
-        
-        zs = np.zeros(self.n_states)
-        zs[terminal] = 1
-        
-        p = [np.array(p_transition[:, :, a]) for a in range(self.n_actions)]
-    
-        for _ in range(2*self.n_states):
-            za = np.array([er * p[a].dot(zs) for a in range(self.n_actions)]).T
-            zs = za.sum(axis=1)
-            zs[terminal] = 1
+    """
+    zs = np.ones(n_states)
+    zs[0] = 0
+
+    za = np.zeros((n_states, n_actions))
+    next_state_idx = np.zeros((n_states,n_actions))
+
+    for i in range(n_states):
+        state = state_space[i]
+        for j in range(n_actions):
+            if state[j] == 0:
+                next_state = list(state)
+                next_state[j] = 1
+                next_state_idx[i,j] = state_space.index(tuple(next_state))
+
+    er = np.exp(reward)
+    for i in range(20):
+        for j in range(n_states):
+            for a in range(n_actions):
+                if next_state_idx[j,a] != 0:
+                    idx = int(next_state_idx[j,a])
+                    za[j,a] = zs[idx]
             
-        p_action = za / zs[:, None]
-        p_action = np.nan_to_num(p_action, nan = 0)
+        za = (za.T * er).T
+        zs = za.sum(axis=1)
+        zs[-1] = 1
+
+
+    p_action = za / zs[:, None]
+    p_action = np.nan_to_num(p_action, nan = 0)
     
-        return p_action
-
-    def get_p_action_a_reward(self, reward):
-        """
-        Compute the local action probabilities (policy) required for the edge
-        frequency calculation for maximum entropy reinfocement learning.
-        
-        Args:
-            reward: The reward signal per action as table
-                `[state: Integer] -> reward: Float`.
-        Returns:
-            The local action probabilities (policy) as map
-            `[state: Integer, action: Integer] -> probability: Float`
-        """
-
-        p_transition, state_to_state = self.get_p_transition()
-    
-        terminal = []
-        for i in range(self.n_states):
-            if np.all((state_to_state[i,:] == 0)):
-                terminal.append(i)
-        
-        zs = np.zeros(self.n_states)
-        zs[terminal] = 1
-        
-        for _ in range(2 * self.n_states):                       
-        # reset action values to zero
-            za = np.zeros((self.n_states, self.n_actions))            # za: action partition function
-
-            # for each state-action pair
-            for s_from in range(self.n_states):
-                for a in range(self.n_actions):
-
-                # sum over s_to
-                    for s_to in range(self.n_states):
-                        za[s_from, a] += p_transition[s_from, s_to, a] * np.exp(reward[a]) * zs[s_to]
-            
-            # sum over all actions
-            zs = za.sum(axis=1)
-            zs[terminal] = 1
-            
-        p_action = za / zs[:, None]
-        p_action = np.nan_to_num(p_action, nan = 0)
-    
-        return p_action
+    return p_action
 
 
-def get_features(featurizer: Featurizer, state_space):
+def get_features(featurizer: Featurizer, state_space: Space):
     """
     Args:
         featurizer: mapping used to get the features for every single state
@@ -295,51 +410,11 @@ def get_features(featurizer: Featurizer, state_space):
     return np.array(features)
 
 
-def expected_empirical_feature_counts_from_trajectories(
-    mdp: DeterministicTreeMDP,
-    featurizer: Featurizer,
-    trajectories: Iterable[
-        Sequence[State],
-    ],
-) -> Dict[State, np.ndarray]:
-    """Counts expected empirical feature counts ("f tilde").
-    Args:
-        mdp: underlying deterministic MDP
-        featurizer: mapping used to get the features for every single state
-        trajectories: a set of trajectories. Each trajectory is a sequence of states.
-    Returns:
-        dictionary mapping all states in MDP to their expected empirical
-        feature counts
-    """
-    #trajectories = list(trajectories)
-
-    # The number of trajectories
-    m = len(trajectories)
-    #state_space = get_state_space(n_actions=5)
-    # Get the default feature vector basing
-    # on the first state in the first trajectory
-    some_state = trajectories[0][0]
-
-    def get_default_feature() -> np.ndarray:
-        """Zeros vector, which will be returned
-        for the states that have not been visited at all."""
-        return np.zeros_like(featurizer.transform(some_state))
-
-    # Initialize the dictionary with zero vectors
-    counts = {state: get_default_feature() for state in mdp.state_space}
-    #features = []
-    features = np.zeros(len(featurizer.transform(trajectories[0][0])))
-    for trajectory in trajectories:
-        for state in trajectory:
-            feature = featurizer.transform(state)
-            counts[tuple(state)] += feature / m
-            #features.append(feature / m)
-            features += feature/m
-
-    return counts, np.array(features)
-
-
-def expected_svf_from_policy(p_transition, p_action, p_initial, eps) -> np.array:
+def expected_svf_from_policy(
+    p_transition: np.ndarray, 
+    p_action: np.ndarray, 
+    p_initial: np.ndarray, 
+    eps: float) -> np.ndarray:
     """
     Compute the expected state visitation frequency using the given local
     action probabilities.
@@ -376,12 +451,15 @@ def expected_svf_from_policy(p_transition, p_action, p_initial, eps) -> np.array
     d = np.zeros(n_states)
 
     delta = np.inf
+    delta_test = []
     while delta > eps:
         d_ = [p_transition[a].T.dot(p_action[:, a] * d) for a in range(n_actions)]
         d_ = p_initial + np.array(d_).sum(axis=0)
 
         delta, d = np.max(np.abs(d_ - d)), d_
-    return d
+        delta_test.append(delta)
+    
+    return d, delta_test
 
 
 class IRL:
@@ -408,17 +486,20 @@ class IRL:
         expected state-visitation frequency.
     """
 
-    def __init__(self, features, feature_expectation, optim, Transition, p_initial, eps, eps_esvf) -> None:
+    def __init__(self, n_actions, features, feature_expectation, optim, p_initial, eps, eps_esvf) -> None:
         self.features = features
         self.feature_expectation = feature_expectation
         self.optim = optim
-        self.Transition = Transition
         self.p_initial = p_initial
         self.eps = eps
         self.eps_esvf = eps_esvf
+        self.n_actions = n_actions
+        self.n_states = get_n_states(n_actions)
+        self.state_space = get_state_space(n_actions)
+        
 
 
-    def irl_state(self) -> np.array:
+    def irl_state(self, trajectories) -> np.array:
         """
         This function learns the reward function for states. 
 
@@ -427,38 +508,44 @@ class IRL:
 
         Please note: this function is partially referenced from https://github.com/qzed/irl-maxent/blob/master/src/maxent.py line 196-255.
         """
-        p_transition,_ = self.Transition.get_p_transition()
+        p_transition= get_p_transition(n_states = self.n_states,
+                                    n_actions=self.n_actions, 
+                                    state_space=self.state_space, 
+                                    trajectories=trajectories)
+
         theta = np.zeros((len(self.features[0]),)) + 0.5
         delta = np.inf
 
         self.optim.reset(theta)
+        delta_test = []
+
         while delta > self.eps:
             theta_old = theta.copy()
             # compute per-state reward
             reward = self.features.dot(theta)
-            p_action = self.Transition.get_p_action_s_reward(reward)
-            
+
+            p_action = get_p_action(self.n_states, self.n_actions, reward=reward, state_space=get_state_space(self.n_actions))
             # compute the gradient
-            e_svf = expected_svf_from_policy(p_transition, p_action, self.p_initial, self.eps_esvf)
+            e_svf, _ = expected_svf_from_policy(p_transition, p_action, self.p_initial, self.eps_esvf)
             grad = self.feature_expectation - self.features.T.dot(e_svf)
 
             # perform optimization step and compute delta for convergence
             self.optim.step(grad)
-            #print(grad)
             delta = np.max(np.abs(theta_old - theta))
-        
+            delta_test.append(delta)
     
-        return self.features.dot(theta)
+        return self.features.dot(theta), delta_test
 
+"""
     def irl_action(self, action_features) -> np.array:
-        """
+        
         This function learns the reward function for action. 
 
         Returns:
             The reward per action as table `[action: Integer] -> reward: Float`.
 
         Please note: this function is partially referenced from https://github.com/qzed/irl-maxent/blob/master/src/maxent.py line 196-255.
-        """
+        
 
         p_transition, _ = self.Transition.get_p_transition()
         theta = np.zeros((len(action_features[0]),)) + 0.5
@@ -472,7 +559,7 @@ class IRL:
             p_action = self.Transition.get_p_action_a_reward(reward)
             
             # compute the gradient
-            e_svf = expected_svf_from_policy(p_transition, p_action, self.p_initial, self.eps_esvf)
+            e_svf, _ = expected_svf_from_policy(p_transition, p_action, self.p_initial, self.eps_esvf)
             grad = self.feature_expectation - self.features.T.dot(e_svf)
 
             # perform optimization step and compute delta for convergence
@@ -494,3 +581,5 @@ class IRL:
                 additive_state_action_reward[i,j] = state_reward[i] + action_reward[j]
         
         return additive_state_action_reward
+"""
+
