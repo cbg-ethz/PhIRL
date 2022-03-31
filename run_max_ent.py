@@ -17,7 +17,10 @@ import numpy as np
 import phirl.api as ph
 import phirl.hydra_utils as hy
 from phirl.maxent import *
-import irl_maxent as me
+from irl_maxent import optimizer as O
+import seaborn as sns
+import matplotlib
+
 
 
 # ************************************************************************
@@ -52,43 +55,39 @@ def main(config: MainConfig) -> None:
     logger.info("Starting new run for states...")
 
     logger.info(f"Creating MDP with {config.n_action} actions...")
-    SP = State_space(config.n_action)
-    mdp = ph.maxent.DeterministicTreeMDP(n_actions=config.n_action, SP=State_space(config.n_action))
+    state_space = get_state_space(config.n_action)
+    mdp = ph.maxent.DeterministicTreeMDP(config.n_action)
 
     logger.info(f"Reading data from {config.data} file...")
     trees = get_trees(config)
-    n_states = get_n_states(config.n_action)
-    state_space = SP.get_state_space()
 
-    TS = StateTransitions(config.n_action, trees, SP)
-    #p_transition = TS.get_p_transition()
-    transitions = TS.get_transition()
-    features = get_features(IdentityFeaturizer(Featurizer), state_space)
-    #logger.info(f"Features: {features}")
+    logger.info("Setting up featurizier...") 
+    featurizer = IdentityFeaturizer(config.n_action)
+    features = get_features(featurizer, state_space)
+    logger.info(f"Feature dimensionality: {featurizer.shape}")
+
+    logger.info("Extracting trajectories...") 
+    action_of_trajectories = get_action_of_trajectories(trees, max_length=20)
+    n_states = get_n_states(config.n_action)
+    initial_state = tuple([0,0,0,0,0])
+    trajectories = unroll_trajectories(action_trajectories=action_of_trajectories, initial_state=initial_state, mdp=mdp)
+    state_trajectories = get_state_transition_trajectories(trajectories)
+    
 
     logger.info("Calculating feature expectations...")
-    # featurizer = OneHotFeaturizer(state_space)
-    counts, feature_expectation = expected_empirical_feature_counts_from_trajectories(mdp, featurizer=IdentityFeaturizer(Featurizer), trajectories=transitions)
-    #d = expected_svf_from_policy(p_transition, p_action, eps=1e-5)
+    counts = expected_empirical_feature_counts(mdp=mdp, featurizer=featurizer, trajectories=state_trajectories)
+    feature_expectation = sum(np.array(list(counts.values())))
+    logger.info(f"Feature expectation: {feature_expectation}")
     
     logger.info("Learning the state reward function...")
-    optim = me.optimizer.ExpSga(lr=me.optimizer.linear_decay(lr0=0.2), normalize=True)
+    optim = O.ExpSga(lr=O.linear_decay(lr0=0.2), normalize=True)
     p_initial = np.zeros(n_states)
     p_initial[0] = 1
-    irl = IRL(features, feature_expectation, optim, TS, p_initial, eps=1e-4, eps_esvf=1e-5)
-    s_reward = irl.irl_state()
-
-    logger.info("Learning the action reward function...")
-    action_space = SP.get_action_space()
-    action_features = get_features(IdentityFeaturizer(Featurizer), action_space)
-    a_reward = irl.irl_action(action_features)
-    s_a_reward = irl.additive_reward(config.n_action, action_features)
     
-    logger.info(f"Feature expectation: {feature_expectation}")
-    logger.info(f"Feature dimension: {len(features[1])}")
+    irl = IRL(config.n_action, features, feature_expectation, optim, p_initial, eps=1e-4, eps_esvf=1e-5)
+    s_reward, _ = irl.irl_state(state_trajectories)
     logger.info(f"State reward function: {s_reward}")
-    logger.info(f"Action reward function: {a_reward}")
-    logger.info(f"Additive reward function: {s_a_reward}")
+
 
 # ************************************************************************
 
