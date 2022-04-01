@@ -13,15 +13,15 @@ class TreeNaming:
     Attrs:
         node: column name with node id/name
         parent: column name with the parent's id
-        values: a dictionary mapping
+        data: a dictionary mapping column names to field names in nodes
 
     Example:
     TreeNaming(
         node="Node_ID",
         parent="Parent_ID",
-        values={
+        data={
             "Mutation_ID": "mutation",
-            "SomeValue": value,
+            "SomeValue": "value",
         }
     means that a data frame with columns
     "Node_ID", "Parent_ID", "Mutation_ID", "SomeValue"
@@ -33,7 +33,7 @@ class TreeNaming:
 
     node: str = "Node_ID"
     parent: str = "Parent_ID"
-    values: Dict[str, str] = dataclasses.field(default_factory=lambda: {"Mutation_ID": "mutation"})
+    data: Dict[str, str] = dataclasses.field(default_factory=lambda: {"Mutation_ID": "mutation"})
 
 
 @dataclasses.dataclass
@@ -65,7 +65,7 @@ def parse_tree(df: pd.DataFrame, naming: TreeNaming) -> anytree.Node:
     for _, row in df.iterrows():
         node_id = row[naming.node]
         parent_id = row[naming.parent]
-        values = {val: row[key] for key, val in naming.values.items()}
+        values = {val: row[key] for key, val in naming.data.items()}
 
         if node_id in nodes:
             raise ValueError(f"Node {node_id} already exists.")
