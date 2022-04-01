@@ -9,6 +9,9 @@ import phirl.hydra_utils as hy
 class ConnConfig:
     host: str = "some-website.com"
     port: int = 1234
+
+    username: str = hy.MISSING
+
 @hy.main
 def connect(config: ConnConfig):
     request = some_function(config.host, config.port)
@@ -33,4 +36,6 @@ def config(config_type):
 
 
 def main(fn):
+
     return hydra.main(config_path=None, config_name=_MAIN_CONFIG)(fn)
+

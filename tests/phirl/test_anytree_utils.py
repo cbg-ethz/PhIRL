@@ -25,7 +25,7 @@ def test_parse_tree() -> None:
     naming = ph.TreeNaming(
         node="NodeID",
         parent="ParentID",
-        values={
+        data={
             "ValueSquare": "square",
             "ValueDoubled": "doubled",
         },
@@ -58,7 +58,7 @@ def test_parse_forest() -> None:
         naming=ph.TreeNaming(
             node="Node_ID",
             parent="Parent_ID",
-            values={
+            data={
                 "Mutation_ID": "mutation",
             },
         ),

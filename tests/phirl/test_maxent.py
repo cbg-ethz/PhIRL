@@ -1,3 +1,4 @@
+
 from typing import List, Tuple
 import numpy as np
 import numpy.testing as nptest
@@ -429,21 +430,6 @@ class TestIRL:
 
         for i in range( len(delta_test) - 1 ):
             assert delta_test[i] > delta_test[i+1]
-
-    
-
-    
-
-            
-
-
-
-
-    
-
-        
-
-
 
 
 

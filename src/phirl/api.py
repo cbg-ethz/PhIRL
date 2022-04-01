@@ -24,4 +24,3 @@ __all__ = [
     "TreeNaming",
     # *** phirl.maxent: ***
     "maxent",
-]

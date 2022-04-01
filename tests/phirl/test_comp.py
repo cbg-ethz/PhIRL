@@ -1,4 +1,5 @@
 def test_protocol() -> None:
+
      from phirl._comp import Protocol
 
      class Interface(Protocol):
@@ -11,3 +12,4 @@ def test_protocol() -> None:
 
      x = Implementation()
      assert x.a() == 3
+
