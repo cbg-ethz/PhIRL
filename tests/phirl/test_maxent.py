@@ -243,7 +243,7 @@ class TestExpectedEmpiricalFeatureCounts:
 
 
 @pytest.mark.parametrize("n_actions", (2, 5, 7))
-def test_get_features(n_actions) -> None:
+def test_get_features(n_actions: int) -> None:
     """ Tests for the function that mapping the state to its corresponding features """
     featurizer = me.IdentityFeaturizer(n_actions)
     state_space = me.get_state_space(n_actions)
