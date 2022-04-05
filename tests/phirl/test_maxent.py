@@ -385,15 +385,15 @@ class TestIRL:
         p_initial = np.zeros(n_states)
         p_initial[0] = 1
 
-        irl = me.IRL(n_actions,
+        _, delta_test, _ = me.irl(n_actions,
                     features=features, 
                     feature_expectation=fe, 
                     optim=optim, 
                     p_initial=p_initial, 
                     eps=1e-4, 
-                    eps_esvf=1e-5)
+                    eps_esvf=1e-5, trajectories=trajectories)
 
-        _, delta_test = irl.irl_state(trajectories=trajectories)
+        
 
         for i in range( len(delta_test) - 1 ):
             assert delta_test[i] > delta_test[i+1]
@@ -418,18 +418,17 @@ class TestIRL:
         p_initial = np.zeros(n_states)
         p_initial[0] = 1
 
-        irl = me.IRL(n_actions,
+        _, delta_test, _ = me.irl(n_actions,
                     features=features, 
                     feature_expectation=fe, 
                     optim=optim, 
                     p_initial=p_initial, 
                     eps=1e-4, 
-                    eps_esvf=1e-5)
-
-        _, delta_test = irl.irl_state(trajectories=trajectories)
+                    eps_esvf=1e-5, trajectories=trajectories)
 
         for i in range( len(delta_test) - 1 ):
             assert delta_test[i] > delta_test[i+1]
+
 
 
 
