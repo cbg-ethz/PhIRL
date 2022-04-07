@@ -318,38 +318,27 @@ def expected_empirical_feature_counts(
 
 
 
-def get_p_transition(
-    n_states: int, 
-    n_actions: int, 
-    state_space: Space, 
-    trajectories: Iterable[
-        Sequence[State]]) -> np.ndarray:
-        """
+def get_p_transition(n_actions: int, state_space: Space, mdp:DeterministicTreeMDP) -> np.ndarray:
+    """
+        
         returns:
             p_transition: `[from: Integer, to: Integer, action: Integer] -> probability: Float`
             The probability of a transition from state `from` to state `to` via action `action` to succeed.
 
             p_action: `[state: Integer, action: Integer] -> probability: Float`
             Local action probabilities
-        """
-        p_transition = np.zeros((n_states, n_states, n_actions))
-       
+    """
+    n_states = get_n_states(n_actions)
+    p_transition = np.zeros((n_states, n_states, n_actions))
+    for current_state_idx in range(n_states-1):
+        for action in range(n_actions):
+            current_state = state_space[current_state_idx]
+            next_state = mdp.new_state(current_state, action+1)
+            next_state_idx = state_space.index(next_state)
+            p_transition[current_state_idx, next_state_idx, action] = 1
 
-        for i in range(len(trajectories)):
-            for j in range(1,len(trajectories[i])):
-                current = state_space.index(trajectories[i][j-1])
-                next = state_space.index(trajectories[i][j])
-                
-                for n in range(n_actions):
-                    if trajectories[i][j - 1][n] != trajectories[i][j][n]:
-                        action = n
-                        p_transition[current, next, action] += 1
+    return p_transition
 
-        for i in range(n_states):
-            if sum(sum(p_transition[i, :, :])) != 0:
-                p_transition[i, :, :] /= sum(sum(p_transition[i, :, :]))
-
-        return p_transition
 
 def get_p_action(n_states: int, n_actions: int, reward: np.ndarray, state_space: Space):
     """
@@ -472,8 +461,7 @@ def irl(n_actions:int,
         p_initial: np.ndarray, 
         eps: float, 
         eps_esvf: float, 
-        trajectories: Iterable[
-         Sequence[State]]) -> np.ndarray:
+        mdp: DeterministicTreeMDP) -> np.ndarray:
 
     """
     Compute the reward signal given the demonstration trajectories using the
@@ -504,10 +492,7 @@ def irl(n_actions:int,
     """
     n_states = get_n_states(n_actions)
     state_space = get_state_space(n_actions)
-    p_transition= get_p_transition(n_states = n_states,
-                                    n_actions=n_actions, 
-                                    state_space=state_space, 
-                                    trajectories=trajectories)
+    p_transition = get_p_transition(n_actions, state_space, mdp)
 
     theta = np.zeros((len(features[0]),)) + 0.5
     delta = np.inf
