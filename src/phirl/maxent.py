@@ -402,19 +402,18 @@ def get_features(featurizer: Featurizer, state_space: Space):
 
 
 def expected_svf_from_policy(
+    n_actions: int, 
     p_transition: np.ndarray, 
-    p_action: np.ndarray, 
-    p_initial: np.ndarray, 
-    eps: float) -> np.ndarray:
+    p_action: np.ndarray) -> np.ndarray:
     """
     Compute the expected state visitation frequency using the given local
     action probabilities.
     This is the forward pass of Algorithm 1 of the Maximum Entropy IRL paper
     by Ziebart et al. (2008). Alternatively, it can also be found as
     Algorithm 9.3 in in Ziebart's thesis (2010).
-    It has been slightly adapted for convergence, by forcing transition
-    probabilities from terminal stats to be zero.
+    
     Args:
+        n_actions: The number of actions.
         p_transition: The transition probabilities of the MDP as table
             `[from: Integer, to: Integer, action: Integer] -> probability: Float`
             specifying the probability of a transition from state `from` to
@@ -424,33 +423,30 @@ def expected_svf_from_policy(
             `[state: Integer, action: Integer] -> probability: Float`
             as returned by `local_action_probabilities`.
 
-        eps: The threshold to be used as convergence criterion. Convergence
-            is assumed if the expected state visitation frequency changes
-            less than the threshold on all states in a single iteration.
+        
     Returns:
         The expected state visitation frequencies as map
         `[state: Integer] -> svf: Float`.
 
     Please note: this function is partially referenced from https://github.com/qzed/irl-maxent/blob/master/src/maxent.py line 63-114.
     """
-    n_states, _, n_actions = p_transition.shape
-    
-    p_transition = np.copy(p_transition)
-    # set-up transition matrices for each action
-    p_transition = [np.array(p_transition[:, :, a]) for a in range(n_actions)]
-    # actual forward-computation of state expectations
-    d = np.zeros(n_states)
+    n_states = get_n_states(n_actions)
+    d = np.zeros((n_states, n_actions+1)) 
+    # initial state
+    d[0, 0] = 1
 
-    delta = np.inf
-    delta_test = []
-    while delta > eps:
-        d_ = [p_transition[a].T.dot(p_action[:, a] * d) for a in range(n_actions)]
-        d_ = p_initial + np.array(d_).sum(axis=0)
-
-        delta, d = np.max(np.abs(d_ - d)), d_
-        delta_test.append(delta)
+    # 5. iterate for N steps
+    for t in range(1, n_actions+1):                    # longest trajectory: n_action
+        
+        # for all states
+        for s_to in range(n_states):
+            
+            # sum over nonterminal state-action pairs
+            for s_from in range(n_states-1):
+                for a in range(n_actions):
+                    d[s_to, t] += d[s_from, t-1] * p_action[s_from, a] * p_transition[s_from, s_to, a]
     
-    return d, delta_test
+    return d.sum(axis=1)
 
     
 
