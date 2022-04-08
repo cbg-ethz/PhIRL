@@ -456,7 +456,6 @@ def irl(n_actions:int,
         optim: Optimizer, 
         p_initial: np.ndarray, 
         eps: float, 
-        eps_esvf: float, 
         mdp: DeterministicTreeMDP) -> np.ndarray:
 
     """
@@ -503,7 +502,7 @@ def irl(n_actions:int,
 
         p_action = get_p_action(n_states, n_actions, reward=reward, state_space=state_space)
         # compute the gradient
-        e_svf, _ = expected_svf_from_policy(p_transition, p_action, p_initial, eps_esvf)
+        e_svf = expected_svf_from_policy(n_actions, p_transition, p_action)
         grad = feature_expectation - features.T.dot(e_svf)
 
         # perform optimization step and compute delta for convergence
