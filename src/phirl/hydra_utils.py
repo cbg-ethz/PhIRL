@@ -34,4 +34,3 @@ def config(config_type):
 
 def main(fn):
     return hydra.main(config_path=None, config_name=_MAIN_CONFIG)(fn)
-
