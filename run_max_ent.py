@@ -10,7 +10,6 @@ import logging
 from typing import Any, Dict, Optional
 
 import anytree
-#from matplotlib.pyplot import get
 import pandas as pd
 import numpy as np
 
@@ -19,9 +18,8 @@ import phirl.hydra_utils as hy
 import phirl.maxent as me
 from irl_maxent import optimizer as Optim
 import seaborn as sns
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
-# import optimizer as Optim
 
 
 # ************************************************************************
