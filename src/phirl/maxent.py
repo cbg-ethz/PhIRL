@@ -17,7 +17,7 @@ from platform import node
 from statistics import mean, median
 from turtle import pen
 from typing import List, cast, Dict, Iterable, Sequence, Tuple
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 import numpy as np
 import numpy.random as rn
@@ -608,7 +608,7 @@ def get_action_reward(n_actions, learned_reward):
 
     return action_reward
 
-
+"""
 def plot_learning_history(learning_history: list, theta_history: list):
     iteration, mean_reward, grad_norm = learning_history
 
@@ -621,3 +621,5 @@ def plot_learning_history(learning_history: list, theta_history: list):
     ax2.set(xlabel="The number of iterations", ylabel="Grad norm")
 
     plt.show()
+"""
+
