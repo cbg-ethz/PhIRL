@@ -11,4 +11,3 @@ def test_protocol() -> None:
 
     x = Implementation()
     assert x.a() == 3
-
