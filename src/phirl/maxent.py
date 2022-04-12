@@ -13,11 +13,9 @@ B.D. Ziebart et al., Maximum Entropy Inverse Reinforcement Learning,
 AAAI (2008), https://www.aaai.org/Papers/AAAI/2008/AAAI08-227.pdf
 """
 import itertools
-from platform import node
-from statistics import mean, median
-from turtle import pen
 from typing import List, cast, Dict, Iterable, Sequence, Tuple
-#import matplotlib.pyplot as plt
+
+# import matplotlib.pyplot as plt
 
 import numpy as np
 import numpy.random as rn
@@ -407,63 +405,6 @@ def get_features(featurizer: Featurizer, state_space: Space):
     return np.array(features)
 
 
-"""
-def expected_svf_from_policy(
-    p_transition: np.ndarray, 
-    p_action: np.ndarray, 
-    p_initial: np.ndarray, 
-    eps: float) -> np.ndarray:
-    
-    Compute the expected state visitation frequency using the given local
-    action probabilities.
-    This is the forward pass of Algorithm 1 of the Maximum Entropy IRL paper
-    by Ziebart et al. (2008). Alternatively, it can also be found as
-    Algorithm 9.3 in in Ziebart's thesis (2010).
-    It has been slightly adapted for convergence, by forcing transition
-    probabilities from terminal stats to be zero.
-    Args:
-        p_transition: The transition probabilities of the MDP as table
-            `[from: Integer, to: Integer, action: Integer] -> probability: Float`
-            specifying the probability of a transition from state `from` to
-            state `to` via action `action` to succeed.
-        
-        p_action: Local action probabilities as map
-            `[state: Integer, action: Integer] -> probability: Float`
-            as returned by `local_action_probabilities`.
-
-        eps: The threshold to be used as convergence criterion. Convergence
-            is assumed if the expected state visitation frequency changes
-            less than the threshold on all states in a single iteration.
-    Returns:
-        The expected state visitation frequencies as map
-        `[state: Integer] -> svf: Float`.
-
-    Please note: this function is partially referenced from https://github.com/qzed/irl-maxent/blob/master/src/maxent.py line 63-114.
-    
-    n_states, _, n_actions = p_transition.shape
-
-    p_transition = np.copy(p_transition)
-    # set-up transition matrices for each action
-    #p_transition[n_states-1, :, :] = 0.0
-    p_transition = [np.array(p_transition[:, :, a]) for a in range(n_actions)]
-    
-
-    # actual forward-computation of state expectations
-    d = np.zeros(n_states)
-    
-
-    delta = np.inf
-    delta_test = []
-    while delta > eps:
-        d_ = [p_transition[a].T.dot(p_action[:, a] * d) for a in range(n_actions)]
-        d_ = p_initial + np.array(d_).sum(axis=0)
-        delta, d = np.max(np.abs(d_ - d)), d_
-        delta_test.append(delta)
-        
-    return d, delta_test
-"""
-
-
 def expected_svf_from_policy(
     n_actions: int, p_transition: np.ndarray, p_action: np.ndarray
 ) -> np.ndarray:
@@ -608,6 +549,7 @@ def get_action_reward(n_actions, learned_reward):
 
     return action_reward
 
+
 """
 def plot_learning_history(learning_history: list, theta_history: list):
     iteration, mean_reward, grad_norm = learning_history
@@ -622,4 +564,3 @@ def plot_learning_history(learning_history: list, theta_history: list):
 
     plt.show()
 """
-
