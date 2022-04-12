@@ -19,8 +19,9 @@ import phirl.hydra_utils as hy
 import phirl.maxent as me
 from irl_maxent import optimizer as Optim
 import seaborn as sns
-import matplotlib
+import matplotlib.pyplot as plt
 
+# import optimizer as Optim
 
 
 # ************************************************************************
@@ -32,17 +33,16 @@ class MainConfig:
         data: path to a data frame with trees
         n_action: number of actions (mutations)
         learning_rate: the learning rate used for gradient descent optimization
-        eps: the threshold of convergence for optimization algorithm 
+        eps: the threshold of convergence for optimization algorithm
         eps_esvf: The threshold to be used as convergence criterion for the expected state-visitation frequency.
         naming: conventions used to name forest
         max_length: use to limit the maximal length of the trajectory
     """
 
-    data: str = '/Users/apple/Desktop/Lab_rotation1/tree_df.csv'
+    data: str = "/Users/apple/Desktop/Lab_rotation1/tree_df.csv"
     n_action: int = 5
-    learning_rate: float = 0.2
-    eps: float = 1e-4
-    eps_esvf: float = 1e-5
+    learning_rate: float = 0.5
+    eps: float = 1e-2
 
     naming: ph.ForestNaming = dataclasses.field(default_factory=ph.ForestNaming)
     max_length: Optional[int] = None
@@ -67,40 +67,54 @@ def main(config: MainConfig) -> None:
     logger.info(f"Reading data from {config.data} file...")
     trees = get_trees(config)
 
-    logger.info("Setting up featurizier...") 
-    featurizer = me.IdentityFeaturizer(config.n_action)
-    #featurizer = OneHotFeaturizer(state_space)
+    logger.info("Setting up featurizier...")
+    # featurizer = me.IdentityFeaturizer(config.n_action)
+    featurizer = me.OneHotFeaturizer(state_space)
     features = me.get_features(featurizer, state_space)
     logger.info(f"Feature dimensionality: {featurizer.shape}")
 
-    logger.info("Extracting trajectories...") 
+    logger.info("Extracting trajectories...")
     action_of_trajectories = me.get_action_of_trajectories(trees, max_length=20)
     n_states = me.get_n_states(config.n_action)
     initial_state = tuple(0 for _ in range(config.n_action))
-    trajectories = me.unroll_trajectories(action_trajectories=action_of_trajectories, initial_state=initial_state, mdp=mdp)
+    trajectories = me.unroll_trajectories(
+        action_trajectories=action_of_trajectories, initial_state=initial_state, mdp=mdp
+    )
     state_trajectories = me.get_state_transition_trajectories(trajectories)
-    
 
     logger.info("Calculating feature expectations...")
-    counts = me.expected_empirical_feature_counts(mdp=mdp, featurizer=featurizer, trajectories=state_trajectories)
+    counts = me.expected_empirical_feature_counts(
+        mdp=mdp, featurizer=featurizer, trajectories=state_trajectories
+    )
     feature_expectation = sum(np.array(list(counts.values())))
     logger.info(f"Feature expectation: {feature_expectation}")
-    
+
     logger.info("Learning the state reward function...")
-    optim = Optim.ExpSga(lr=Optim.linear_decay(lr0=config.learning_rate), normalize=True)
-    p_initial = np.zeros(n_states)
-    p_initial[0] = 1
-    
-    
-    s_reward, _ = me.irl(n_actions=config.n_action, features=features, feature_expectation=feature_expectation, optim = optim, 
-                    p_initial=p_initial, eps=config.eps, eps_esvf=config.eps_esvf, trajectories=state_trajectories)
+    optim = Optim.Sga(lr=config.learning_rate)
+    # optim = Optim.ExpSga(lr=Optim.linear_decay(lr0=config.learning_rate), normalize=True)
+    # optim = Optim.NormalizeGrad(optim)
+
+    s_reward, _, learning_history, theta_history = me.irl(
+        n_actions=config.n_action,
+        features=features,
+        feature_expectation=feature_expectation,
+        optim=optim,
+        eps=config.eps,
+        mdp=mdp,
+    )
     logger.info(f"State reward function: {s_reward}")
 
-    additive_reward = me.get_additive_reward(n_actions=config.n_action, learned_reward=s_reward)
-    logger.info(f"Additive reward function: {additive_reward}")
+    # additive_reward = me.get_additive_reward(n_actions=config.n_action, learned_reward=s_reward)
+    # logger.info(f"Additive reward function: {additive_reward}")
 
-    action_reward = me.get_action_reward(n_actions = config.n_action, learned_reward = s_reward)
-    logger.info(f"One-action state reward function: {action_reward}")
+    # action_reward = me.get_action_reward(n_actions = config.n_action, learned_reward = s_reward)
+    # logger.info(f"One-action state reward function: {action_reward}")
+
+    fig = me.plot_learning_history(
+        learning_history=learning_history, theta_history=theta_history
+    )
+    # fig.savefig("plot.pdf")
+
 
 # ************************************************************************
 
