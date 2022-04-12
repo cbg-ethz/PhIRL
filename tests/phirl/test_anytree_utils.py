@@ -172,3 +172,4 @@ def test_filter_trajectories() -> None:
     assert ph.filter_trajectories(traj, longer_than=2, shorter_than=3) == traj[1:4]
     assert ph.filter_trajectories(traj, allowed_length=1) == traj[:1]
     assert ph.filter_trajectories(traj, allowed_length=(1, 4)) == [traj[0], traj[4]]
+
