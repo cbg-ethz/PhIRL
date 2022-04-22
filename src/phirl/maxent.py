@@ -12,6 +12,7 @@ MaxEnt IRL was proposed in
 B.D. Ziebart et al., Maximum Entropy Inverse Reinforcement Learning,
 AAAI (2008), https://www.aaai.org/Papers/AAAI/2008/AAAI08-227.pdf
 """
+import dataclasses
 import itertools
 from typing import List, cast, Dict, Iterable, Sequence, Tuple
 
@@ -349,18 +350,19 @@ def get_p_transition(n_actions: int, state_space: Space, mdp: DeterministicTreeM
 
 
 def get_p_action(
-    n_states: int, n_actions: int, reward: np.ndarray, state_space: Space
+    n_states: int, n_actions: int, reward: np.ndarray, state_space: Space, iterations: int = 20
 ) -> np.ndarray:
     """
     Compute the local action probabilities (policy) required for the edge
-        frequency calculation for maximum entropy reinfocement learning.
+        frequency calculation for MaxEnt-IRL.
 
-        Args:
-            n_states:
-            reward: The reward signal per state as table
-                `[state: Integer] -> reward: Float`.
-        Returns:
-            The local action probabilities (policy) as map
+    Args:
+        n_states:
+        reward: The reward signal per state as table
+            `[state: Integer] -> reward: Float`.
+
+    Returns:
+        The local action probabilities (policy) as map
             `[state: Integer, action: Integer] -> probability: Float`
     """
     zs = np.ones(n_states)
@@ -378,7 +380,7 @@ def get_p_action(
                 next_state_idx[i, j] = state_space.index(tuple(next_state))
 
     er = np.exp(reward)
-    for i in range(20):
+    for i in range(iterations):
         for j in range(n_states):
             for a in range(n_actions):
                 if next_state_idx[j, a] != 0:
@@ -433,79 +435,109 @@ def expected_svf_from_policy(
     return d.sum(axis=1)
 
 
+@dataclasses.dataclass
+class IRLHistory:
+    """Optimization history.
+
+    Attributes:
+        expected_svf: expected state visitation frequencies
+
+    """
+
+    theta: List[np.ndarray]
+    grad: List[np.ndarray]
+    expected_svf: List[np.ndarray]
+
+
+@dataclasses.dataclass
+class IRLOutput:
+    """MaxEnt-IRL run result.
+
+    Attributes:
+        theta: final reward weights, shape (features_dim,)
+        grad: gradient of the likelihood with respect to theta. Shape (features_dim,)
+        history: likelihood optimization history
+    """
+
+    theta: np.ndarray
+    state_rewards: np.ndarray
+    history: IRLHistory
+
+
 def irl(
     n_actions: int,
     features: np.ndarray,
     feature_expectation: np.ndarray,
     optim: Optimizer,
-    eps: float,
     mdp: DeterministicTreeMDP,
-) -> np.ndarray:
-
+    eps: float,
+    max_iter: int,
+) -> IRLOutput:
     """
     Compute the reward signal given the demonstration trajectories using the
     maximum entropy inverse reinforcement learning algorithm proposed in the
     corresponding paper by Ziebart et al. (2008).
 
     Args:
-        features: The feature-matrix (as a 2D- numpy array), mapping states
-        to features, i.e. a matrix of shape (n_states x dim_features).
-
+        features: feature vector for each state, hape (n_states, features_dim)
         feature_expectation: The feature-expectation of the provided trajectories as map
-        `[state: Integer] -> feature_expectation: Float`.
-
+            `[state: Integer] -> feature_expectation: Float`.
         optim: The `Optimizer` instance to use for gradient-based optimization.
-
         eps: The threshold to be used as convergence criterion for the
-        reward parameters.
+            reward parameters.
 
-        trajectories: a set of trajectories. Each trajectory is a sequence of states.
 
     Returns:
         The reward per state as table `[state: Integer] -> reward: Float`.
     """
     n_states = get_n_states(n_actions)
     state_space = get_state_space(n_actions)
-    p_transition = get_p_transition(n_actions, state_space, mdp)
+    p_transition = get_p_transition(n_actions=n_actions, state_space=state_space, mdp=mdp)
 
     theta = np.zeros((len(features[0]),)) + 0.5
-    # theta = rn.uniform(size=(n_states,))
+
+    # Difference between thetas, used to check for optimization convergence
     delta = np.inf
 
     optim.reset(theta)
-    delta_history = []
-    history = [[], [], []]  # [[number_iterations],[mean_reward],[mean_grad]]
-    theta_history = []
+
+    history = IRLHistory(theta=[], grad=[], expected_svf=[])
+
     iteration = 0
 
-    while delta > eps:
+    while delta > eps and iteration < max_iter:
+        iteration += 1
+
         theta_old = theta.copy()
-        # compute per-state reward
+
+        # Compute the reward for each state
         reward = features.dot(theta)
 
+        # Get P(a | s), i.e., the policy from the reward
         p_action = get_p_action(n_states, n_actions, reward=reward, state_space=state_space)
-        # p_action = get_p_action1(n_actions, reward, p_transition)
 
-        # compute the gradient
-        # e_svf, _ = expected_svf_from_policy(p_transition, p_action, p_initial, eps_esvf)
-        e_svf = expected_svf_from_policy(n_actions, p_transition, p_action)
+        # Compute the likelihood gradient, i.e., eq. 6 in Ziebart (2008)
+        e_svf = expected_svf_from_policy(
+            n_actions=n_actions, p_transition=p_transition, p_action=p_action
+        )
         grad = feature_expectation - features.T.dot(e_svf)
-        # grad = features.T.dot(e_svf) - feature_expectation
-        # print(e_svf)
-        # perform optimization step and compute delta for convergence
+
+        # Perform optimization step
         optim.step(grad)
-        # theta += optim * grad
 
-        delta = np.max(np.abs(theta_old - theta))
-        delta_history.append(delta)
-        iteration += 1
-        history[0].append(iteration)
-        history[1].append(np.mean(features.dot(theta)))
-        history[2].append(np.linalg.norm(grad))
-        theta_history.append(np.mean(theta.copy()))
-        # print(theta)
+        # Check for convergence
+        delta = np.linalg.norm(theta_old - theta)
 
-    return features.dot(theta), delta_history, history, theta_history
+        # Add entries to the history
+        history.theta.append(theta.copy())
+        history.grad.append(grad.copy())
+        history.expected_svf.append(e_svf)
+
+    return IRLOutput(
+        theta=theta,
+        state_rewards=features.dot(theta),
+        history=history,
+    )
 
 
 def get_additive_reward(n_actions: int, learned_reward: np.ndarray) -> np.ndarray:

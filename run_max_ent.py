@@ -7,10 +7,12 @@ Note:
 """
 import dataclasses
 import enum
+import json
 import logging
 from typing import Any, Dict, Optional
 
 import anytree
+import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 
@@ -70,6 +72,40 @@ def get_featurizer(config: MainConfig) -> me.Featurizer:
         raise ValueError(f"Featurizer {config.featurizer} not recognized.")
 
 
+def save_results(results: me.IRLOutput) -> None:
+    with open("final_params.json", "w") as f:
+        json.dump(
+            fp=f,
+            obj={
+                "theta": results.theta.tolist(),
+                "state_rewards": results.state_rewards.tolist(),
+            },
+        )
+
+    pd.DataFrame(results.history.theta).to_csv("history-theta.csv", index=False)
+    pd.DataFrame(results.history.grad).to_csv("history-grad.csv", index=False)
+    pd.DataFrame(results.history.expected_svf).to_csv("history-expected_svf.csv", index=False)
+
+    panel_size = 5
+    fig, axs = plt.subplots(2, figsize=(panel_size, panel_size * 2))
+
+    def plot_history(ax: plt.Axes, values) -> None:
+        y = list(values)
+        x = (range(1, len(y) + 1),)
+        ax.scatter(x, y)
+
+    plot_history(axs[0], map(np.linalg.norm, results.history.grad))
+    axs[0].set_title("Grad norm")
+
+    theta_hist = np.asarray(results.history.theta)
+    theta_diff = theta_hist[1:, ...] - theta_hist[:-1, ...]
+    plot_history(axs[1], map(np.linalg.norm, theta_diff))
+    axs[1].set_title("Theta difference norm")
+
+    fig.tight_layout()
+    fig.savefig("plot.pdf")
+
+
 @hy.main
 def main(config: MainConfig) -> None:
     logger = logging.getLogger(__name__)
@@ -108,15 +144,20 @@ def main(config: MainConfig) -> None:
     # optim = Optim.ExpSga(lr=Optim.linear_decay(lr0=config.learning_rate), normalize=True)
     # optim = Optim.NormalizeGrad(optim)
 
-    s_reward, _, learning_history, theta_history = me.irl(
+    results = me.irl(
         n_actions=config.n_action,
         features=features,
         feature_expectation=feature_expectation,
         optim=optim,
-        eps=config.eps,
         mdp=mdp,
+        eps=config.eps,
+        max_iter=config.max_iter,
     )
-    logger.info(f"State reward function: {s_reward}")
+
+    logger.info("Saving the results...")
+    save_results(results)
+
+    # logger.info(f"State reward function: {s_reward}")
 
     # additive_reward = me.get_additive_reward(n_actions=config.n_action, learned_reward=s_reward)
     # logger.info(f"Additive reward function: {additive_reward}")
@@ -126,9 +167,6 @@ def main(config: MainConfig) -> None:
 
     # fig = me.plot_learning_history(learning_history=learning_history, theta_history=theta_history)
     # fig.savefig("plot.pdf")
-
-
-# ************************************************************************
 
 
 if __name__ == "__main__":
