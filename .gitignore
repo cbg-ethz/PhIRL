@@ -4,6 +4,7 @@
 *.hdf5
 *.npy
 *.npz
+data/
 outputs/
 
 # Image data
