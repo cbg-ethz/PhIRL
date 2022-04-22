@@ -6,6 +6,7 @@ Note:
     The data path must be absolute not relative.
 """
 import dataclasses
+import enum
 import logging
 from typing import Any, Dict, Optional
 
@@ -17,12 +18,15 @@ import phirl.api as ph
 import phirl.hydra_utils as hy
 import phirl.maxent as me
 from irl_maxent import optimizer as Optim
-import seaborn as sns
-#import matplotlib.pyplot as plt
 
 
+class Featurizer(enum.Enum):
+    """Enum used to select featurizer to be used."""
 
-# ************************************************************************
+    ONEHOT = "ONEHOT"
+    IDENTITY = "IDENTITY"
+
+
 @hy.config
 @dataclasses.dataclass
 class MainConfig:
@@ -32,15 +36,17 @@ class MainConfig:
         n_action: number of actions (mutations)
         learning_rate: the learning rate used for gradient descent optimization
         eps: the threshold of convergence for optimization algorithm
-        eps_esvf: The threshold to be used as convergence criterion for the expected state-visitation frequency.
+        max_iter: maximum number of iterations in the optimization loop
         naming: conventions used to name forest
         max_length: use to limit the maximal length of the trajectory
     """
 
     data: str = "/Users/apple/Desktop/Lab_rotation1/tree_df.csv"
     n_action: int = 5
-    learning_rate: float = 0.5
+    learning_rate: float = 0.05
+    featurizer: Featurizer = Featurizer.IDENTITY
     eps: float = 1e-2
+    max_iter: int = 1000
 
     naming: ph.ForestNaming = dataclasses.field(default_factory=ph.ForestNaming)
     max_length: Optional[int] = None
@@ -53,10 +59,21 @@ def get_trees(config: MainConfig) -> Dict[Any, anytree.Node]:
     return trees
 
 
+def get_featurizer(config: MainConfig) -> me.Featurizer:
+    """Factory method creating the featurizer specified in the config."""
+    if config.featurizer == Featurizer.ONEHOT:
+        space = me.get_state_space(n_actions=config.n_action)
+        return me.OneHotFeaturizer(space)
+    elif config.featurizer == Featurizer.IDENTITY:
+        return me.IdentityFeaturizer(n_actions=config.n_action)
+    else:
+        raise ValueError(f"Featurizer {config.featurizer} not recognized.")
+
+
 @hy.main
 def main(config: MainConfig) -> None:
     logger = logging.getLogger(__name__)
-    logger.info("Starting new run for states...")
+    logger.info("Starting new run...")
 
     logger.info(f"Creating MDP with {config.n_action} actions...")
     state_space = me.get_state_space(config.n_action)
@@ -65,16 +82,15 @@ def main(config: MainConfig) -> None:
     logger.info(f"Reading data from {config.data} file...")
     trees = get_trees(config)
 
-    logger.info("Setting up featurizier...")
-    # featurizer = me.IdentityFeaturizer(config.n_action)
-    featurizer = me.OneHotFeaturizer(state_space)
+    logger.info("Setting up featurizer...")
+    featurizer = get_featurizer(config)
     features = me.get_features(featurizer, state_space)
     logger.info(f"Feature dimensionality: {featurizer.shape}")
 
     logger.info("Extracting trajectories...")
     action_of_trajectories = me.get_action_of_trajectories(trees, max_length=20)
-    n_states = me.get_n_states(config.n_action)
-    initial_state = tuple(0 for _ in range(config.n_action))
+    initial_state = me.initial_state(config.n_action)
+
     trajectories = me.unroll_trajectories(
         action_trajectories=action_of_trajectories, initial_state=initial_state, mdp=mdp
     )
@@ -108,9 +124,7 @@ def main(config: MainConfig) -> None:
     # action_reward = me.get_action_reward(n_actions = config.n_action, learned_reward = s_reward)
     # logger.info(f"One-action state reward function: {action_reward}")
 
-    fig = me.plot_learning_history(
-        learning_history=learning_history, theta_history=theta_history
-    )
+    # fig = me.plot_learning_history(learning_history=learning_history, theta_history=theta_history)
     # fig.savefig("plot.pdf")
 
 

@@ -15,10 +15,8 @@ AAAI (2008), https://www.aaai.org/Papers/AAAI/2008/AAAI08-227.pdf
 import itertools
 from typing import List, cast, Dict, Iterable, Sequence, Tuple
 
-# import matplotlib.pyplot as plt
 
 import numpy as np
-import numpy.random as rn
 import phirl.api as ph
 from phirl._comp import Protocol
 
@@ -44,7 +42,8 @@ def get_state_space(n_actions: int) -> Space:
     return tuple(cast(State, state) for state in itertools.product([0, 1], repeat=n_actions))
 
 
-def get_action_space(n_actions):
+def get_action_space(n_actions: int) -> np.ndarray:
+    # TODO(Jiayi, Pawel): Missing docstring
     action_space = []
     for i in range(n_actions):
         action = [0] * n_actions
@@ -52,6 +51,11 @@ def get_action_space(n_actions):
         action_space.append(tuple(action))
 
     return np.array(action_space)
+
+
+def initial_state(n_actions: int) -> State:
+    """Returns the initial state (no mutations at all)."""
+    return cast(State, tuple(0 for _ in range(n_actions)))
 
 
 class DeterministicTreeMDP:
@@ -326,7 +330,8 @@ def get_p_transition(n_actions: int, state_space: Space, mdp: DeterministicTreeM
 
     returns:
         p_transition: `[from: Integer, to: Integer, action: Integer] -> probability: Float`
-        The probability of a transition from state `from` to state `to` via action `action` to succeed.
+        The probability of a transition from state `from` to state `to`
+        via action `action` to succeed.
 
         p_action: `[state: Integer, action: Integer] -> probability: Float`
         Local action probabilities

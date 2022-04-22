@@ -3,4 +3,5 @@ hydra-core
 irl-maxent
 numpy
 pandas
+seaborn
 typing_extensions
