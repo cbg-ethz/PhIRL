@@ -132,8 +132,6 @@ def main(config: MainConfig) -> None:
 
     logger.info("Learning the state reward function...")
     optim = Optim.Sga(lr=config.learning_rate)
-    # optim = Optim.ExpSga(lr=Optim.linear_decay(lr0=config.learning_rate), normalize=True)
-    # optim = Optim.NormalizeGrad(optim)
 
     results = me.irl(
         n_actions=config.n_action,
@@ -147,17 +145,6 @@ def main(config: MainConfig) -> None:
 
     logger.info("Saving the results...")
     save_results(results)
-
-    # logger.info(f"State reward function: {s_reward}")
-
-    # additive_reward = me.get_additive_reward(n_actions=config.n_action, learned_reward=s_reward)
-    # logger.info(f"Additive reward function: {additive_reward}")
-
-    # action_reward = me.get_action_reward(n_actions = config.n_action, learned_reward = s_reward)
-    # logger.info(f"One-action state reward function: {action_reward}")
-
-    # fig = me.plot_learning_history(learning_history=learning_history, theta_history=theta_history)
-    # fig.savefig("plot.pdf")
 
 
 if __name__ == "__main__":
