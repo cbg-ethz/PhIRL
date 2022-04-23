@@ -7,7 +7,6 @@ Note:
 """
 import dataclasses
 import enum
-import json
 import logging
 from typing import Any, Dict, Optional
 
@@ -43,7 +42,7 @@ class MainConfig:
         max_length: use to limit the maximal length of the trajectory
     """
 
-    data: str = "/Users/apple/Desktop/Lab_rotation1/tree_df.csv"
+    data: str
     n_action: int = 5
     learning_rate: float = 0.05
     featurizer: Featurizer = Featurizer.IDENTITY
@@ -73,19 +72,11 @@ def get_featurizer(config: MainConfig) -> me.Featurizer:
 
 
 def save_results(results: me.IRLOutput) -> None:
-    with open("final_params.json", "w") as f:
-        json.dump(
-            fp=f,
-            obj={
-                "theta": results.theta.tolist(),
-                "state_rewards": results.state_rewards.tolist(),
-            },
-        )
+    """This function saves the results."""
+    # Use the fact that Hydra substitutes the working directory
+    me.save_output(results, path=".")
 
-    pd.DataFrame(results.history.theta).to_csv("history-theta.csv", index=False)
-    pd.DataFrame(results.history.grad).to_csv("history-grad.csv", index=False)
-    pd.DataFrame(results.history.expected_svf).to_csv("history-expected_svf.csv", index=False)
-
+    # Draw the plot
     panel_size = 5
     fig, axs = plt.subplots(2, figsize=(panel_size, panel_size * 2))
 
@@ -94,13 +85,13 @@ def save_results(results: me.IRLOutput) -> None:
         x = (range(1, len(y) + 1),)
         ax.scatter(x, y)
 
-    plot_history(axs[0], map(np.linalg.norm, results.history.grad))
     axs[0].set_title("Grad norm")
+    plot_history(axs[0], [np.linalg.norm(entry.grad) for entry in results.history])
 
-    theta_hist = np.asarray(results.history.theta)
+    axs[1].set_title("Theta difference norm")
+    theta_hist = np.asarray([entry.theta for entry in results.history])
     theta_diff = theta_hist[1:, ...] - theta_hist[:-1, ...]
     plot_history(axs[1], map(np.linalg.norm, theta_diff))
-    axs[1].set_title("Theta difference norm")
 
     fig.tight_layout()
     fig.savefig("plot.pdf")

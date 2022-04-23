@@ -14,14 +14,16 @@ AAAI (2008), https://www.aaai.org/Papers/AAAI/2008/AAAI08-227.pdf
 """
 import dataclasses
 import itertools
-from typing import List, cast, Dict, Iterable, Sequence, Tuple
-
+import json
+import pathlib
+from typing import List, Callable, cast, Dict, Iterable, Sequence, Tuple, Union
 
 import numpy as np
-import phirl.api as ph
-from phirl._comp import Protocol
-
+import pandas as pd
 from irl_maxent.optimizer import Optimizer
+
+import phirl.anytree_utils as autil
+from phirl._comp import Protocol
 
 
 def get_n_states(n_actions: int) -> int:
@@ -162,10 +164,13 @@ class OneHotFeaturizer(Featurizer):
     def state_to_index(self, state: State) -> int:
         """Maps the state to its index, which is the
         only non-zero coordinate in the one-hot encoding (starting at 0).
+
         Args:
             state: state
+
         Returns:
             index, starting at 0
+
         See Also:
             index_to_state, the inverse mapping
         """
@@ -175,11 +180,14 @@ class OneHotFeaturizer(Featurizer):
         """For a given `index` returns a state which
         is represented by a one-hot vector with 1 at
         position `index`.
+
         Args:
             index: number between 0 and `n_states` - 1
+
         Returns:
             the state which will be represented by the
             one-hot vector specified by `index`
+
         See Also:
             state_to_index, the inverse mapping
         """
@@ -189,11 +197,11 @@ class OneHotFeaturizer(Featurizer):
 Action = List[int]
 
 
-def get_action_of_trajectories(trees, max_length=20) -> List[List[Action]]:
+def get_action_of_trajectories(trees, max_length: int = 20) -> List[List[Action]]:
     """This function generates a list of actions of each trajectory"""
     action_of_trajectories = []
     for tree_node in trees.values():
-        action_each_trajectory = ph.list_all_trajectories(tree_node, max_length=20)
+        action_each_trajectory = autil.list_all_trajectories(tree_node, max_length=max_length)
         action_of_trajectories.append(action_each_trajectory)
 
     actions = []
@@ -210,9 +218,11 @@ def get_action_of_trajectories(trees, max_length=20) -> List[List[Action]]:
 
 class Trajectory:
     """An object representing an MDP trajectory.
+
     Attrs:
         states: a tuple of states visited by agent, length n
         actions: tuple of actions executed by agent, length n-1
+
     Note:
         1. `actions[k]` corresponds to the action executed by the agent between
           `states[k] and `states[k+1]`
@@ -265,8 +275,10 @@ def unroll_trajectories(
     """This function applies `unroll_trajectory` to each action sequence
     in `action_trajectories`, assuming that all of these start at `initial_state`
     and follow a deterministic transition function (`mdp`).
+
     Note:
         The `initial_state` needs to be immutable, as we don't copy it to each trajectory.
+
     See Also:
         unroll_trajectory, the backend of this function
     """
@@ -436,32 +448,69 @@ def expected_svf_from_policy(
 
 
 @dataclasses.dataclass
-class IRLHistory:
-    """Optimization history.
+class HistoryEntry:
+    """A single entry in the optimization history.
 
-    Attributes:
-        expected_svf: expected state visitation frequencies
+    Attrs:
+        theta: final reward weights, shape (features_dim,)
+        grad: gradient of the likelihood with respect to theta. Shape (features_dim,)
+        expected_svf: expected state visitation frequencies,
+            calculated using the optimal policy for the reward
 
+    Note:
+        Changes here should be reflected in `save_output`.
     """
 
-    theta: List[np.ndarray]
-    grad: List[np.ndarray]
-    expected_svf: List[np.ndarray]
+    theta: np.ndarray
+    grad: np.ndarray
+    expected_svf: np.ndarray
 
 
 @dataclasses.dataclass
 class IRLOutput:
     """MaxEnt-IRL run result.
 
-    Attributes:
-        theta: final reward weights, shape (features_dim,)
-        grad: gradient of the likelihood with respect to theta. Shape (features_dim,)
-        history: likelihood optimization history
+    Attrs:
+        theta: optimal reward weights
+        state_rewards: the reward for each state
+        history: optimization history
+
+    Note:
+        Changes here should be reflected in `save_output`.
     """
 
     theta: np.ndarray
     state_rewards: np.ndarray
-    history: IRLHistory
+    history: List[HistoryEntry]
+
+
+def save_output(output: IRLOutput, path: Union[str, pathlib.Path]) -> None:
+    """Saves optimization results to the disk.
+
+    Args:
+        output: optimization results
+        path: directory name where the results should be dumped
+    """
+    path = pathlib.Path(path)
+    path.mkdir(exist_ok=True)
+
+    with open(path / "final_params.json", "w") as f:
+        json.dump(
+            fp=f,
+            obj={
+                "theta": output.theta.tolist(),
+                "state_rewards": output.state_rewards.tolist(),
+            },
+        )
+
+    def save_attr(mapping: Callable[[HistoryEntry], np.ndarray], filename: str) -> None:
+        file_path = path / filename
+        results = np.asarray([mapping(entry) for entry in output.history])
+        pd.DataFrame(results).to_csv(file_path, index=False, header=False)
+
+    save_attr(lambda x: x.theta, "history-theta.csv")
+    save_attr(lambda x: x.grad, "history-grad.csv")
+    save_attr(lambda x: x.expected_svf, "history-expected_svf.csv")
 
 
 def irl(
@@ -495,15 +544,13 @@ def irl(
     p_transition = get_p_transition(n_actions=n_actions, state_space=state_space, mdp=mdp)
 
     theta = np.zeros((len(features[0]),)) + 0.5
-
-    # Difference between thetas, used to check for optimization convergence
-    delta = np.inf
-
     optim.reset(theta)
 
-    history = IRLHistory(theta=[], grad=[], expected_svf=[])
+    history: List[HistoryEntry] = []
 
-    iteration = 0
+    # Optimization convergence variables
+    delta = np.inf  # Difference between thetas, used to check the convergence
+    iteration = 0  # Iteration counter
 
     while delta > eps and iteration < max_iter:
         iteration += 1
@@ -528,10 +575,10 @@ def irl(
         # Check for convergence
         delta = np.linalg.norm(theta_old - theta)
 
-        # Add entries to the history
-        history.theta.append(theta.copy())
-        history.grad.append(grad.copy())
-        history.expected_svf.append(e_svf)
+        # Add entry to the history
+        history.append(
+            HistoryEntry(theta=theta.copy(), grad=grad.copy(), expected_svf=e_svf.copy())
+        )
 
     return IRLOutput(
         theta=theta,
