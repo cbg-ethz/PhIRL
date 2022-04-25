@@ -12,17 +12,18 @@ MaxEnt IRL was proposed in
 B.D. Ziebart et al., Maximum Entropy Inverse Reinforcement Learning,
 AAAI (2008), https://www.aaai.org/Papers/AAAI/2008/AAAI08-227.pdf
 """
+import dataclasses
 import itertools
-from typing import List, cast, Dict, Iterable, Sequence, Tuple
-
-# import matplotlib.pyplot as plt
+import json
+import pathlib
+from typing import List, Callable, cast, Dict, Iterable, Sequence, Tuple, Union
 
 import numpy as np
-import numpy.random as rn
-import phirl.api as ph
-from phirl._comp import Protocol
-
+import pandas as pd
 from irl_maxent.optimizer import Optimizer
+
+import phirl.anytree_utils as autil
+from phirl._comp import Protocol
 
 
 def get_n_states(n_actions: int) -> int:
@@ -44,7 +45,8 @@ def get_state_space(n_actions: int) -> Space:
     return tuple(cast(State, state) for state in itertools.product([0, 1], repeat=n_actions))
 
 
-def get_action_space(n_actions):
+def get_action_space(n_actions: int) -> np.ndarray:
+    # TODO(Jiayi, Pawel): Missing docstring
     action_space = []
     for i in range(n_actions):
         action = [0] * n_actions
@@ -52,6 +54,11 @@ def get_action_space(n_actions):
         action_space.append(tuple(action))
 
     return np.array(action_space)
+
+
+def initial_state(n_actions: int) -> State:
+    """Returns the initial state (no mutations at all)."""
+    return cast(State, tuple(0 for _ in range(n_actions)))
 
 
 class DeterministicTreeMDP:
@@ -157,10 +164,13 @@ class OneHotFeaturizer(Featurizer):
     def state_to_index(self, state: State) -> int:
         """Maps the state to its index, which is the
         only non-zero coordinate in the one-hot encoding (starting at 0).
+
         Args:
             state: state
+
         Returns:
             index, starting at 0
+
         See Also:
             index_to_state, the inverse mapping
         """
@@ -170,11 +180,14 @@ class OneHotFeaturizer(Featurizer):
         """For a given `index` returns a state which
         is represented by a one-hot vector with 1 at
         position `index`.
+
         Args:
             index: number between 0 and `n_states` - 1
+
         Returns:
             the state which will be represented by the
             one-hot vector specified by `index`
+
         See Also:
             state_to_index, the inverse mapping
         """
@@ -184,11 +197,11 @@ class OneHotFeaturizer(Featurizer):
 Action = List[int]
 
 
-def get_action_of_trajectories(trees, max_length=20) -> List[List[Action]]:
+def get_action_of_trajectories(trees, max_length: int = 20) -> List[List[Action]]:
     """This function generates a list of actions of each trajectory"""
     action_of_trajectories = []
     for tree_node in trees.values():
-        action_each_trajectory = ph.list_all_trajectories(tree_node, max_length=20)
+        action_each_trajectory = autil.list_all_trajectories(tree_node, max_length=max_length)
         action_of_trajectories.append(action_each_trajectory)
 
     actions = []
@@ -205,9 +218,11 @@ def get_action_of_trajectories(trees, max_length=20) -> List[List[Action]]:
 
 class Trajectory:
     """An object representing an MDP trajectory.
+
     Attrs:
         states: a tuple of states visited by agent, length n
         actions: tuple of actions executed by agent, length n-1
+
     Note:
         1. `actions[k]` corresponds to the action executed by the agent between
           `states[k] and `states[k+1]`
@@ -260,8 +275,10 @@ def unroll_trajectories(
     """This function applies `unroll_trajectory` to each action sequence
     in `action_trajectories`, assuming that all of these start at `initial_state`
     and follow a deterministic transition function (`mdp`).
+
     Note:
         The `initial_state` needs to be immutable, as we don't copy it to each trajectory.
+
     See Also:
         unroll_trajectory, the backend of this function
     """
@@ -326,7 +343,8 @@ def get_p_transition(n_actions: int, state_space: Space, mdp: DeterministicTreeM
 
     returns:
         p_transition: `[from: Integer, to: Integer, action: Integer] -> probability: Float`
-        The probability of a transition from state `from` to state `to` via action `action` to succeed.
+        The probability of a transition from state `from` to state `to`
+        via action `action` to succeed.
 
         p_action: `[state: Integer, action: Integer] -> probability: Float`
         Local action probabilities
@@ -344,18 +362,19 @@ def get_p_transition(n_actions: int, state_space: Space, mdp: DeterministicTreeM
 
 
 def get_p_action(
-    n_states: int, n_actions: int, reward: np.ndarray, state_space: Space
+    n_states: int, n_actions: int, reward: np.ndarray, state_space: Space, iterations: int = 20
 ) -> np.ndarray:
     """
     Compute the local action probabilities (policy) required for the edge
-        frequency calculation for maximum entropy reinfocement learning.
+        frequency calculation for MaxEnt-IRL.
 
-        Args:
-            n_states:
-            reward: The reward signal per state as table
-                `[state: Integer] -> reward: Float`.
-        Returns:
-            The local action probabilities (policy) as map
+    Args:
+        n_states:
+        reward: The reward signal per state as table
+            `[state: Integer] -> reward: Float`.
+
+    Returns:
+        The local action probabilities (policy) as map
             `[state: Integer, action: Integer] -> probability: Float`
     """
     zs = np.ones(n_states)
@@ -373,7 +392,7 @@ def get_p_action(
                 next_state_idx[i, j] = state_space.index(tuple(next_state))
 
     er = np.exp(reward)
-    for i in range(20):
+    for i in range(iterations):
         for j in range(n_states):
             for a in range(n_actions):
                 if next_state_idx[j, a] != 0:
@@ -428,79 +447,144 @@ def expected_svf_from_policy(
     return d.sum(axis=1)
 
 
+@dataclasses.dataclass
+class HistoryEntry:
+    """A single entry in the optimization history.
+
+    Attrs:
+        theta: final reward weights, shape (features_dim,)
+        grad: gradient of the likelihood with respect to theta. Shape (features_dim,)
+        expected_svf: expected state visitation frequencies,
+            calculated using the optimal policy for the reward
+
+    Note:
+        Changes here should be reflected in `save_output`.
+    """
+
+    theta: np.ndarray
+    grad: np.ndarray
+    expected_svf: np.ndarray
+
+
+@dataclasses.dataclass
+class IRLOutput:
+    """MaxEnt-IRL run result.
+
+    Attrs:
+        theta: optimal reward weights
+        state_rewards: the reward for each state
+        history: optimization history
+
+    Note:
+        Changes here should be reflected in `save_output`.
+    """
+
+    theta: np.ndarray
+    state_rewards: np.ndarray
+    history: List[HistoryEntry]
+
+
+def save_output(output: IRLOutput, path: Union[str, pathlib.Path]) -> None:
+    """Saves optimization results to the disk.
+
+    Args:
+        output: optimization results
+        path: directory name where the results should be dumped
+    """
+    path = pathlib.Path(path)
+    path.mkdir(exist_ok=True)
+
+    with open(path / "final_params.json", "w") as f:
+        json.dump(
+            fp=f,
+            obj={
+                "theta": output.theta.tolist(),
+                "state_rewards": output.state_rewards.tolist(),
+            },
+        )
+
+    def save_attr(mapping: Callable[[HistoryEntry], np.ndarray], filename: str) -> None:
+        file_path = path / filename
+        results = np.asarray([mapping(entry) for entry in output.history])
+        pd.DataFrame(results).to_csv(file_path, index=False, header=False)
+
+    save_attr(lambda x: x.theta, "history-theta.csv")
+    save_attr(lambda x: x.grad, "history-grad.csv")
+    save_attr(lambda x: x.expected_svf, "history-expected_svf.csv")
+
+
 def irl(
     n_actions: int,
     features: np.ndarray,
     feature_expectation: np.ndarray,
     optim: Optimizer,
-    eps: float,
     mdp: DeterministicTreeMDP,
-) -> np.ndarray:
-
+    eps: float,
+    max_iter: int,
+) -> IRLOutput:
     """
     Compute the reward signal given the demonstration trajectories using the
     maximum entropy inverse reinforcement learning algorithm proposed in the
     corresponding paper by Ziebart et al. (2008).
 
     Args:
-        features: The feature-matrix (as a 2D- numpy array), mapping states
-        to features, i.e. a matrix of shape (n_states x dim_features).
-
+        features: feature vector for each state, hape (n_states, features_dim)
         feature_expectation: The feature-expectation of the provided trajectories as map
-        `[state: Integer] -> feature_expectation: Float`.
-
+            `[state: Integer] -> feature_expectation: Float`.
         optim: The `Optimizer` instance to use for gradient-based optimization.
-
         eps: The threshold to be used as convergence criterion for the
-        reward parameters.
+            reward parameters.
 
-        trajectories: a set of trajectories. Each trajectory is a sequence of states.
 
     Returns:
         The reward per state as table `[state: Integer] -> reward: Float`.
     """
     n_states = get_n_states(n_actions)
     state_space = get_state_space(n_actions)
-    p_transition = get_p_transition(n_actions, state_space, mdp)
+    p_transition = get_p_transition(n_actions=n_actions, state_space=state_space, mdp=mdp)
 
     theta = np.zeros((len(features[0]),)) + 0.5
-    # theta = rn.uniform(size=(n_states,))
-    delta = np.inf
-
     optim.reset(theta)
-    delta_history = []
-    history = [[], [], []]  # [[number_iterations],[mean_reward],[mean_grad]]
-    theta_history = []
-    iteration = 0
 
-    while delta > eps:
+    history: List[HistoryEntry] = []
+
+    # Optimization convergence variables
+    delta = np.inf  # Difference between thetas, used to check the convergence
+    iteration = 0  # Iteration counter
+
+    while delta > eps and iteration < max_iter:
+        iteration += 1
+
         theta_old = theta.copy()
-        # compute per-state reward
+
+        # Compute the reward for each state
         reward = features.dot(theta)
 
+        # Get P(a | s), i.e., the policy from the reward
         p_action = get_p_action(n_states, n_actions, reward=reward, state_space=state_space)
-        # p_action = get_p_action1(n_actions, reward, p_transition)
 
-        # compute the gradient
-        # e_svf, _ = expected_svf_from_policy(p_transition, p_action, p_initial, eps_esvf)
-        e_svf = expected_svf_from_policy(n_actions, p_transition, p_action)
+        # Compute the likelihood gradient, i.e., eq. 6 in Ziebart (2008)
+        e_svf = expected_svf_from_policy(
+            n_actions=n_actions, p_transition=p_transition, p_action=p_action
+        )
         grad = feature_expectation - features.T.dot(e_svf)
-        # grad = features.T.dot(e_svf) - feature_expectation
-        # print(e_svf)
-        # perform optimization step and compute delta for convergence
+
+        # Perform optimization step
         optim.step(grad)
-        # theta += optim * grad
 
-        delta = np.max(np.abs(theta_old - theta))
-        delta_history.append(delta)
-        iteration += 1
-        history[0].append(iteration)
-        history[1].append(np.mean(features.dot(theta)))
-        history[2].append(np.linalg.norm(grad))
-        theta_history.append(np.mean(theta.copy()))
-        # print(theta)
+        # Check for convergence
+        delta = np.linalg.norm(theta_old - theta)
 
-    return features.dot(theta), delta_history, history, theta_history
+        # Add entry to the history
+        history.append(
+            HistoryEntry(theta=theta.copy(), grad=grad.copy(), expected_svf=e_svf.copy())
+        )
+
+    return IRLOutput(
+        theta=theta,
+        state_rewards=features.dot(theta),
+        history=history,
+    )
 
 
 def get_additive_reward(n_actions: int, learned_reward: np.ndarray) -> np.ndarray:
