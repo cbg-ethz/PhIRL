@@ -10,6 +10,7 @@ from irl_maxent.optimizer import Optimizer
 
 import phirl.anytree_utils as autil
 from phirl._comp import Protocol
+import phirl.maxent as me
 
 
 def get_n_states(n_actions: int) -> int:
@@ -199,69 +200,24 @@ class OneHotFeaturizer(Featurizer):
         return self._index_to_state[index]
 
 
-Action = List[int]
-
-
-def get_action_of_trajectories(trees, n_actions, max_length: int = 20) -> List[List[Action]]:
-    """This function generates a list of actions of each trajectory"""
-    action_of_trajectories = []
-    for tree_node in trees.values():
-        action_each_trajectory = autil.list_all_trajectories(tree_node, max_length=max_length)
-        action_of_trajectories.append(action_each_trajectory)
-
-    actions = []
-    for action_each_trajectory in action_of_trajectories:
-        action = []
-        for nodes in action_each_trajectory:
-            for node in nodes:
-                if node.mutation > 0:
-                    action.append(node.mutation)
-        action.append(n_actions)
-        actions.append(action)
-
-    return actions
-
-
-class Trajectory:
-    """An object representing an MDP trajectory.
-
-    Attrs:
-        states: a tuple of states visited by agent, length n
-        actions: tuple of actions executed by agent, length n-1
-
-    Note:
-        1. `actions[k]` corresponds to the action executed by the agent between
-          `states[k] and `states[k+1]`
-        2. The `states` and `actions` do *not* have equal lengths.
-    """
-
-    def __init__(self, states: Sequence[State], actions: Sequence[Action]) -> None:
-        self.states: Tuple[State] = tuple(states)
-        self.actions: Tuple[Action] = tuple(actions)
-
-        if len(actions) != len(states):
-            raise ValueError("Length of actions must be the length of states.")
-
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(states={self.states}, actions={self.actions})"
-
-    def __eq__(self, other) -> bool:
-        if not isinstance(other, type(self)):
-            return False
-        return self.states == other.states and self.actions == other.actions
+def get_action_of_trajectories(trees, n_actions, max_length: int = 20) -> List[List[me.Action]]:
+    return me.get_action_of_trajectories(trees=trees, max_length=max_length, end_action=n_actions)
 
 
 def unroll_trajectory(
-    actions: Sequence[Action], n_actions: int, initial_state: State, mdp: DeterministicTreeMDP
-) -> Trajectory:
+    actions: Sequence[me.Action], n_actions: int, initial_state: State, mdp: DeterministicTreeMDP
+) -> me.Trajectory:
     """Using a *deterministic* MDP simulates the trajectory, basing on executed `actions`
     starting at `initial_state`.
+
     Args:
         actions: a sequence of actions
         initial_state: starting state
         mdp: deterministic transition function
+
     Returns:
         the trajectory (both states and actions)
+
     See Also:
         unroll_trajectories, a convenient function for generating multiple trajectories
     """
@@ -270,10 +226,11 @@ def unroll_trajectory(
         if action == n_actions:
             new_state = "END"
         else:
+            # states[-1] is the last state we have seen
             new_state = mdp.new_state(state=states[-1], action=action)
             states.append(new_state)
 
-    return Trajectory(states=states, actions=actions)
+    return me.Trajectory(states=states, actions=actions)
 
 
 def unroll_trajectories(

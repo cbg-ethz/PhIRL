@@ -16,7 +16,7 @@ import dataclasses
 import itertools
 import json
 import pathlib
-from typing import List, Callable, cast, Dict, Iterable, Sequence, Tuple, Union
+from typing import List, Callable, cast, Dict, Iterable, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -31,6 +31,7 @@ def get_n_states(n_actions: int) -> int:
     return 2**n_actions
 
 
+Action = int
 State = Tuple[int, ...]
 Space = Tuple[State, ...]
 
@@ -194,26 +195,33 @@ class OneHotFeaturizer(Featurizer):
         return self._index_to_state[index]
 
 
-Action = List[int]
+def get_action_of_trajectories(
+    trees, max_length: int = 20, end_action: Optional[Action] = None
+) -> List[List[Action]]:
+    """This function generates a list of actions of each trajectory.
 
-
-def get_action_of_trajectories(trees, max_length: int = 20) -> List[List[Action]]:
-    """This function generates a list of actions of each trajectory"""
-    action_of_trajectories = []
+    Args:
+        trees: trees from which the trajectories will be extracted
+        max_length: controls the length of the trajectories to be extracted
+        end_action: if not None, `end_action` will be added to each of the trajectories (at the end)
+    """
+    # For all trajectories, it stores the nodes
+    all_the_trajectories = []
     for tree_node in trees.values():
-        action_each_trajectory = autil.list_all_trajectories(tree_node, max_length=max_length)
-        action_of_trajectories.append(action_each_trajectory)
+        trajectories_from_a_tree = autil.list_all_trajectories(tree_node, max_length=max_length)
+        all_the_trajectories.extend(trajectories_from_a_tree)
 
-    actions = []
-    for action_each_trajectory in action_of_trajectories:
-        action = []
-        for nodes in action_each_trajectory:
-            for node in nodes:
-                if node.mutation > 0:
-                    action.append(node.mutation)
-        actions.append(action)
+    # For each trajectory, stores all the actions
+    all_action_trajectories = []
+    for nodes in all_the_trajectories:
+        action_trajectory = [node.mutation for node in nodes if node.mutation > 0]
 
-    return actions
+        if end_action is not None:
+            action_trajectory.append(end_action)
+
+        all_action_trajectories.append(action_trajectory)
+
+    return all_action_trajectories
 
 
 class Trajectory:
