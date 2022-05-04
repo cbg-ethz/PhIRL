@@ -36,17 +36,6 @@ def get_state_space(n_actions: int) -> Space:
     return state_space
 
 
-def get_action_space(n_actions: int) -> np.ndarray:
-    # TODO(Jiayi, Pawel): Missing docstring
-    action_space = []
-    for i in range(n_actions):
-        action = [0] * n_actions
-        action[i] = 1
-        action_space.append(tuple(action))
-
-    return np.array(action_space)
-
-
 def initial_state(n_actions: int) -> State:
     """Returns the initial state (no mutations at all)."""
     return cast(State, tuple(0 for _ in range(n_actions - 1)))
