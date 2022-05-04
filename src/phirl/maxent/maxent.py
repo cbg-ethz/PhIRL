@@ -22,58 +22,6 @@ State = Tuple[int, ...]
 Space = Tuple[State, ...]
 
 
-def get_state_space(n_actions: int) -> Space:
-    """Returns the list of states.
-
-    Note:
-        The size of the space of states grows as
-        `2 ** n_actions`.
-    """
-    return tuple(cast(State, state) for state in itertools.product([0, 1], repeat=n_actions))
-
-
-def initial_state(n_actions: int) -> State:
-    """Returns the initial state (no mutations at all)."""
-    return cast(State, tuple(0 for _ in range(n_actions)))
-
-
-class DeterministicTreeMDP:
-    """This class defines a deterministic MDP.
-    We consider `n` actions, numbered from 1 to `n`.
-    Each state is a subset of actions, represented
-    as `n`-tuple with binary entries, representing whether
-    a particular mutation is
-    Note:
-        As Python is 0-indexed and we index actions from 1,
-        if 1 is the `i`th in the state, it means that the
-        action `i+1`th is present.
-    """
-
-    def __init__(self, n_actions: int) -> None:
-        """The constructor method.
-        Args:
-            n_actions: number of actions in the MDP
-        """
-        self.n_actions = n_actions
-        self.n_states = get_n_states(n_actions)
-        self.state_space = get_state_space(n_actions)
-
-    def new_state(self, state: State, action: int) -> State:
-        """As our MDP is deterministic, this function returns a new state.
-        Args:
-            state: current state
-            action: action taken by the agent
-        Returns
-            new state
-        """
-        if action <= 0 or action > self.n_actions:
-            raise ValueError(f"Actions {action} are from the set 1, ..., {self.n_actions}.")
-
-        new_state = list(state)
-        new_state[action - 1] = 1
-        return tuple(new_state)
-
-
 def get_action_of_trajectories(
     trees, max_length: int = 20, end_action: Optional[Action] = None
 ) -> List[List[Action]]:
@@ -101,28 +49,6 @@ def get_action_of_trajectories(
         all_action_trajectories.append(action_trajectory)
 
     return all_action_trajectories
-
-
-def unroll_trajectory(
-    actions: Sequence[Action], initial_state: State, mdp: DeterministicTreeMDP
-) -> Trajectory:
-    """Using a *deterministic* MDP simulates the trajectory, basing on executed `actions`
-    starting at `initial_state`.
-    Args:
-        actions: a sequence of actions
-        initial_state: starting state
-        mdp: deterministic transition function
-    Returns:
-        the trajectory (both states and actions)
-    See Also:
-        unroll_trajectories, a convenient function for generating multiple trajectories
-    """
-    states = [initial_state]
-    for action in actions:
-        new_state = mdp.new_state(state=states[-1], action=action)
-        states.append(new_state)
-
-    return Trajectory(states=states, actions=actions)
 
 
 def unroll_trajectories(
@@ -153,47 +79,6 @@ def get_state_transition_trajectories(trajectories: Iterable[Sequence[State]]):
         state_trajectories.append(trajectory.states)
 
     return state_trajectories
-
-
-def expected_empirical_feature_counts(
-    mdp: DeterministicTreeMDP,
-    featurizer: Featurizer,
-    trajectories: Iterable[
-        Sequence[State],
-    ],
-) -> Dict[State, np.ndarray]:
-    """Counts expected empirical feature counts, which is
-    `\\tilde f` on page 2 (1434)
-    in B.D. Ziebart et al., Maximum Entropy Inverse Reinforcement Learning.
-
-    Args:
-        mdp: underlying deterministic MDP
-        featurizer: mapping used to get the features for every single state
-        trajectories: a set of trajectories. Each trajectory is a sequence of states.
-
-    Returns:
-        dictionary mapping all states in MDP to their expected empirical
-        feature counts
-    """
-    trajectories = list(trajectories)
-
-    # The number of trajectories
-    m = len(trajectories)
-
-    def get_default_feature() -> np.ndarray:
-        """Zeros vector, which will be returned
-        for the states that have not been visited at all."""
-        return np.zeros(featurizer.shape)
-
-    # Initialize the dictionary with zero vectors
-    counts = {state: get_default_feature() for state in mdp.state_space}
-
-    for trajectory in trajectories:
-        for state in trajectory:
-            feature = featurizer.transform(state)
-            counts[state] += feature / m
-
-    return counts
 
 
 def get_p_transition(n_actions: int, state_space: Space, mdp: DeterministicTreeMDP) -> np.ndarray:
@@ -490,19 +375,3 @@ def get_action_reward(n_actions, learned_reward):
         action_reward.append(learned_reward[state_space.index(tuple(action))])
 
     return action_reward
-
-
-"""
-def plot_learning_history(learning_history: list, theta_history: list):
-    iteration, mean_reward, grad_norm = learning_history
-
-    fig, (ax1, ax2) = plt.subplots(1, 2)
-
-    ax1.plot(iteration, mean_reward)
-    ax1.set(xlabel="The number of iterations", ylabel="mean reward")
-
-    ax2.plot(iteration, grad_norm)
-    ax2.set(xlabel="The number of iterations", ylabel="Grad norm")
-
-    plt.show()
-"""

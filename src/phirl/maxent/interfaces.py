@@ -5,6 +5,8 @@ import numpy as np
 
 State = TypeVar("State")
 Action = TypeVar("Action")
+# The features are represented with numpy arrays
+Feature = np.ndarray
 
 
 class IDeterministicTransitionFunction(abc.ABC, Generic[State, Action]):
@@ -31,7 +33,7 @@ class IFeaturizer(abc.ABC, Generic[State]):
     """Interface for class with a method mapping
     the state into the feature vector."""
 
-    def transform(self, state: State) -> np.ndarray:
+    def transform(self, state: State) -> Feature:
         """Maps the state to the feature vector."""
         raise NotImplementedError
 

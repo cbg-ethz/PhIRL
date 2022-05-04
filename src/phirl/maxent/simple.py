@@ -58,10 +58,16 @@ class SimpleParams(interfaces.IMDPParams):
     def n_actions(self) -> int:
         return self._n_actions
 
+    @property
+    def initial_state(self) -> State:
+        """Returns the initial state (no mutations at all)."""
+        return cast(State, tuple(0 for _ in range(self.n_actions)))
+
 
 class IdentityFeaturizer(interfaces.IFeaturizer):
     """Feature vector is just the state vector,
     modulo type change.
+
     The feature space dimension is the number of actions.
     """
 
@@ -85,8 +91,9 @@ class IdentityFeaturizer(interfaces.IFeaturizer):
 class OneHotFeaturizer(interfaces.IFeaturizer):
     """Each state is encoded using one-hot
     encoding.
-    The feature space dimension is 2 raised to the power
-    of the number of actions.
+
+    The feature space dimension is the number of states
+    (i.e., `2**n_actions`).
     """
 
     def __init__(self, params: SimpleParams) -> None:
