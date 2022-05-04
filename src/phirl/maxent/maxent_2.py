@@ -100,39 +100,6 @@ class Featurizer(Protocol):
         raise NotImplementedError
 
 
-def get_action_of_trajectories(trees, n_actions, max_length: int = 20) -> List[List[me.Action]]:
-    return me.get_action_of_trajectories(trees=trees, max_length=max_length, end_action=n_actions)
-
-
-def unroll_trajectory(
-    actions: Sequence[me.Action], n_actions: int, initial_state: State, mdp: DeterministicTreeMDP
-) -> me.Trajectory:
-    """Using a *deterministic* MDP simulates the trajectory, basing on executed `actions`
-    starting at `initial_state`.
-
-    Args:
-        actions: a sequence of actions
-        initial_state: starting state
-        mdp: deterministic transition function
-
-    Returns:
-        the trajectory (both states and actions)
-
-    See Also:
-        unroll_trajectories, a convenient function for generating multiple trajectories
-    """
-    states = [initial_state]
-    for action in actions:
-        if action == n_actions:
-            new_state = "END"
-        else:
-            # states[-1] is the last state we have seen
-            new_state = mdp.new_state(state=states[-1], action=action)
-            states.append(new_state)
-
-    return me.Trajectory(states=states, actions=actions)
-
-
 def unroll_trajectories(
     action_trajectories: Iterable[Sequence[Action]],
     n_actions: int,
@@ -165,47 +132,6 @@ def get_state_transition_trajectories(trajectories: Iterable[Sequence[State]]):
         state_trajectories.append(state_trajectory)
 
     return state_trajectories
-
-
-def expected_empirical_feature_counts(
-    mdp: DeterministicTreeMDP,
-    featurizer: Featurizer,
-    trajectories: Iterable[
-        Sequence[State],
-    ],
-) -> Dict[State, np.ndarray]:
-    """Counts expected empirical feature counts, which is
-    `\\tilde f` on page 2 (1434)
-    in B.D. Ziebart et al., Maximum Entropy Inverse Reinforcement Learning.
-
-    Args:
-        mdp: underlying deterministic MDP
-        featurizer: mapping used to get the features for every single state
-        trajectories: a set of trajectories. Each trajectory is a sequence of states.
-
-    Returns:
-        dictionary mapping all states in MDP to their expected empirical
-        feature counts
-    """
-    trajectories = list(trajectories)
-
-    # The number of trajectories
-    m = len(trajectories)
-
-    def get_default_feature() -> np.ndarray:
-        """Zeros vector, which will be returned
-        for the states that have not been visited at all."""
-        return np.zeros(featurizer.shape)
-
-    # Initialize the dictionary with zero vectors
-    counts = {state: get_default_feature() for state in mdp.state_space}
-    for trajectory in trajectories:
-        for state in trajectory:
-            if state != "END":
-                feature = featurizer.transform(state)
-                counts[state] += feature / m
-
-    return counts
 
 
 def get_p_transition(n_actions: int, state_space: Space, mdp: DeterministicTreeMDP) -> np.ndarray:
