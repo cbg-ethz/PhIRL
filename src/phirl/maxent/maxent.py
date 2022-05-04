@@ -1,17 +1,3 @@
-"""Submodule implementing the MaxEnt IRL
-approach to finding the reward function.
-
-The MDP is deterministic and each state
-is a set of already acquired mutations.
-We will encode each state as a binary tuple
-(0, 1, 0, ..., 0),
-and 1 on ith position means that the mutation
-i+1 has been acquired.
-
-MaxEnt IRL was proposed in
-B.D. Ziebart et al., Maximum Entropy Inverse Reinforcement Learning,
-AAAI (2008), https://www.aaai.org/Papers/AAAI/2008/AAAI08-227.pdf
-"""
 import dataclasses
 import itertools
 import json
@@ -88,102 +74,6 @@ class DeterministicTreeMDP:
         return tuple(new_state)
 
 
-class Featurizer(Protocol):
-    """Interface for class with a method
-    changing state into the feature vector.
-    Every subclass should implement
-    `transform` method.
-    """
-
-    def transform(self, state: State) -> np.ndarray:
-        raise NotImplementedError
-
-    @property
-    def shape(self) -> Tuple[int, ...]:
-        raise NotImplementedError
-
-
-class IdentityFeaturizer(Featurizer):
-    """Feature vector is just the state vector,
-    modulo type change.
-    The feature space dimension is the number of actions.
-    """
-
-    def __init__(self, n_actions: int) -> None:
-        """
-        Args:
-            n_actions: number of actions
-        """
-        self._n = n_actions
-
-    def transform(self, state: State) -> np.ndarray:
-        if len(state) != self._n:
-            raise ValueError(f"State {state} should be of length {self._n}.")
-        return np.asarray(state, dtype=float)
-
-    @property
-    def shape(self) -> Tuple[int, ...]:
-        return (self._n,)
-
-
-class OneHotFeaturizer(Featurizer):
-    """Each state is encoded using one-hot
-    encoding.
-    The feature space dimension is 2 raised to the power
-    of the number of actions.
-    """
-
-    def __init__(self, space: Space) -> None:
-        self.space = space
-        self.n_states = len(space)
-        # Mapping from index (starting at 0) to the state
-        self._index_to_state = dict(enumerate(space))
-        # The inverse mapping
-        self._state_to_index = dict(zip(self._index_to_state.values(), self._index_to_state.keys()))
-
-    def transform(self, state: State) -> np.ndarray:
-        idx = self.space.index(tuple(state))
-        feature = np.zeros(self.n_states, dtype=float)
-        feature[idx] = 1
-        return feature
-
-    @property
-    def shape(self) -> Tuple[int, ...]:
-        return (self.n_states,)
-
-    def state_to_index(self, state: State) -> int:
-        """Maps the state to its index, which is the
-        only non-zero coordinate in the one-hot encoding (starting at 0).
-
-        Args:
-            state: state
-
-        Returns:
-            index, starting at 0
-
-        See Also:
-            index_to_state, the inverse mapping
-        """
-        return self._state_to_index[state]
-
-    def index_to_state(self, index: int) -> State:
-        """For a given `index` returns a state which
-        is represented by a one-hot vector with 1 at
-        position `index`.
-
-        Args:
-            index: number between 0 and `n_states` - 1
-
-        Returns:
-            the state which will be represented by the
-            one-hot vector specified by `index`
-
-        See Also:
-            state_to_index, the inverse mapping
-        """
-        return self._index_to_state[index]
-
-
 def get_action_of_trajectories(
     trees, max_length: int = 20, end_action: Optional[Action] = None
 ) -> List[List[Action]]:
@@ -211,35 +101,6 @@ def get_action_of_trajectories(
         all_action_trajectories.append(action_trajectory)
 
     return all_action_trajectories
-
-
-class Trajectory:
-    """An object representing an MDP trajectory.
-
-    Attrs:
-        states: a tuple of states visited by agent, length n
-        actions: tuple of actions executed by agent, length n-1
-
-    Note:
-        1. `actions[k]` corresponds to the action executed by the agent between
-          `states[k] and `states[k+1]`
-        2. The `states` and `actions` do *not* have equal lengths.
-    """
-
-    def __init__(self, states: Sequence[State], actions: Sequence[Action]) -> None:
-        self.states: Tuple[State] = tuple(states)
-        self.actions: Tuple[Action] = tuple(actions)
-
-        if len(actions) != len(states) - 1:
-            raise ValueError("Length of actions must be the length of states minus 1.")
-
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(states={self.states}, actions={self.actions})"
-
-    def __eq__(self, other) -> bool:
-        if not isinstance(other, type(self)):
-            return False
-        return self.states == other.states and self.actions == other.actions
 
 
 def unroll_trajectory(
