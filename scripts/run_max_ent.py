@@ -18,7 +18,7 @@ import numpy as np
 import phirl.api as ph
 import phirl.hydra_utils as hy
 import phirl.maxent as me
-from irl_maxent import optimizer as Optim
+from irl_maxent import optimizer
 
 
 class Featurizer(enum.Enum):
@@ -131,7 +131,7 @@ def main(config: MainConfig) -> None:
     logger.info(f"Feature expectation: {feature_expectation}")
 
     logger.info("Learning the state reward function...")
-    optim = Optim.Sga(lr=config.learning_rate)
+    optim = optimizer.Sga(lr=config.learning_rate)
 
     results = me.irl(
         n_actions=config.n_action,
