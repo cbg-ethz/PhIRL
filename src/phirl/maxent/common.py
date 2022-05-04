@@ -1,4 +1,4 @@
-from typing import Dict, Iterable, Sequence, Tuple
+from typing import Dict, Iterable, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -68,3 +68,24 @@ def expected_empirical_feature_counts(
             counts[state] += feature / m
 
     return counts
+
+
+def slice_trajectory(
+    trajectory: interfaces.Trajectory, start: int = 0, end: int = -1
+) -> interfaces.Trajectory:
+    """This function creates a subtrajectory from a given trajectory.
+
+    It is used when one wants to ignore some of the shared start states or truncate long trajectories.
+
+    Args:
+        trajectory:
+        start: the index of the first state to be included into the trajectory
+        end: the index of the first state *to not be included* in the trajectory
+
+    Returns:
+        subtrajectory
+    """
+    return interfaces.Trajectory(
+        states=trajectory.states[start:end],
+        actions=trajectory.states[start:end],
+    )
