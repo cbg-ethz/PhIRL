@@ -20,8 +20,8 @@ import phirl.hydra_utils as hy
 @dataclasses.dataclass
 class OptimizationConfig:
     lr: float = 0.05
-    initial: float = 0.5
-    eps: float = 0.05
+    initial: float = -0.1
+    eps: float = 0.1
 
 
 @hy.config
@@ -40,7 +40,7 @@ def get_action_trajectories(config: MainConfig) -> List[List[int]]:
     trees = ph.parse_forest(dataframe, naming=config.naming)
 
     # Get all paths from every tree and concatenate into one list
-    all_paths = sum([ph.list_all_trajectories(tree) for tree in trees], start=[])
+    all_paths = sum([ph.list_all_trajectories(tree) for tree in trees.values()], start=[])
 
     # Return the mutations (actions) form each node
     return [[node.mutation for node in path if node.mutation > 0] for path in all_paths]
