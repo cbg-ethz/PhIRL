@@ -1,5 +1,5 @@
 import abc
-from typing import Generic, Sequence, Tuple, TypeVar
+from typing import Generic, Tuple, TypeVar
 
 import numpy as np
 
@@ -61,7 +61,7 @@ class IMDPParams(abc.ABC, Generic[State, Action]):
         """The number of states.
 
         Note:
-            This function should be preferred to `len(self.states())`,
+            This function should be preferred to `len(self.states)`,
              as it is often faster.
         """
         return len(self.states)
@@ -71,36 +71,23 @@ class IMDPParams(abc.ABC, Generic[State, Action]):
         """The number of actions.
 
         Note:
-            This function should be preferred to `len(self.actions())`,
+            This function should be preferred to `len(self.actions)`,
              as it is often faster.
         """
         return len(self.actions)
 
 
-class Trajectory(Generic[State, Action]):
-    """An object representing an MDP trajectory.
+_T = TypeVar("_T")
 
-    Attrs:
-        states: a tuple of states visited by agent, length n
-        actions: tuple of actions executed by agent, length n-1
 
-    Note:
-        1. `actions[k]` corresponds to the action executed by the agent between
-          `states[k] and `states[k+1]`
-        2. The `states` and `actions` do *not* have equal lengths.
-    """
+class IEnumerate(abc.ABC, Generic[_T]):
+    """Interface used to enumerate objects and quickly
+    access the index."""
 
-    def __init__(self, states: Sequence[State], actions: Sequence[Action]) -> None:
-        self.states: Tuple[State] = tuple(states)
-        self.actions: Tuple[Action] = tuple(actions)
+    @abc.abstractmethod
+    def to_index(self, obj: _T) -> int:
+        pass
 
-        if len(actions) != len(states) - 1:
-            raise ValueError("Length of actions must be the length of states minus 1.")
-
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(states={self.states}, actions={self.actions})"
-
-    def __eq__(self, other) -> bool:
-        if not isinstance(other, type(self)):
-            return False
-        return self.states == other.states and self.actions == other.actions
+    @abc.abstractmethod
+    def to_object(self, index: int) -> _T:
+        pass

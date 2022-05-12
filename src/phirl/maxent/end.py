@@ -2,12 +2,15 @@ from typing import cast, Tuple, Union
 
 import numpy as np
 
+import phirl.maxent.common
 import phirl.maxent.interfaces as interfaces
 import phirl.maxent.simple as simple
 
+# We allow an additional action leading to the unique end state
 END_ACTION = "END ACTION"
 END_STATE = "END STATE"
 
+# Hence, we need to extend the definition of the state
 State = Union[simple.State, type(END_STATE)]
 Action = Union[simple.Action, type(END_ACTION)]
 
@@ -18,11 +21,11 @@ class EndParams(interfaces.IMDPParams):
 
     @property
     def states(self) -> Tuple[State]:
-        return tuple(list(self.simple.states) + [END_STATE])
+        return cast(Tuple[State], tuple(list(self.simple.states) + [END_STATE]))
 
     @property
     def actions(self) -> Tuple[Action]:
-        return tuple(list(self.simple.actions) + [END_ACTION])
+        return cast(Tuple[Action], tuple(list(self.simple.actions) + [END_ACTION]))
 
     @property
     def n_states(self) -> int:
@@ -50,9 +53,11 @@ class EndIdentityFeaturizer(interfaces.IFeaturizer):
             return self._featurizer.transform(state)
 
 
-def add_end_action_and_state(trajectory: interfaces.Trajectory) -> interfaces.Trajectory:
+def add_end_action_and_state(
+    trajectory: phirl.maxent.common.Trajectory,
+) -> phirl.maxent.common.Trajectory:
     """Creates a new trajectory, differing from `trajectory` by the end action and the end state."""
-    return interfaces.Trajectory(
+    return phirl.maxent.common.Trajectory(
         states=list(trajectory.states) + [END_STATE],
         actions=list(trajectory.actions) + [END_ACTION],
     )
