@@ -21,14 +21,29 @@ import phirl.hydra_utils as hy
 class OptimizationConfig:
     lr: float = 0.05
     initial: float = -0.1
-    eps: float = 0.1
+    eps: float = 0.05
 
 
 @hy.config
 @dataclasses.dataclass
 class MainConfig:
+    """
+    Attrs:
+        data: absolute path to the CSV with trees
+        mutations: the number of mutations
+        optimization: settings for the optimization
+        naming: settings for parsing the input CSV
+        length: settings for filtering out (or truncating) trajectories
+
+        causal: whether to use Maximal *Causal* Entropy IRL
+        discount: discount factor, used only if `causal` is True
+    """
+
     data: str
     mutations: int
+
+    causal: bool = False
+    discount: float = 0.9
 
     optimization: OptimizationConfig = dataclasses.field(default_factory=OptimizationConfig)
     naming: ph.ForestNaming = dataclasses.field(default_factory=ph.ForestNaming)
@@ -81,17 +96,38 @@ def main(config: MainConfig) -> None:
     init = irl.optimizer.Constant(config.optimization.initial)
     optim = irl.optimizer.Sga(lr=config.optimization.lr)
 
-    x = irl.maxent.irl(
-        p_transition=ph.get_p_transition(params=mdp_params, dynamics=mdp_dynamics),
-        features=ph.get_features(
-            params=mdp_params, featurizer=ph.mdp.EndIdentityFeaturizer(params=mdp_params)
-        ),
-        terminal=ph.get_terminal(params=mdp_params, terminal_states=[ph.mdp.END_STATE]),
-        trajectories=ph.get_trajectories(params=mdp_params, trajectories=trajectories),
-        optim=optim,
-        init=init,
-        eps=config.optimization.eps,
+    # Process the data so it fits the interface specifications
+    p_t = ph.get_p_transition(params=mdp_params, dynamics=mdp_dynamics)
+    features = ph.get_features(
+        params=mdp_params, featurizer=ph.mdp.EndIdentityFeaturizer(params=mdp_params)
     )
+    # We have a unique terminal state.
+    # TODO(Pawel): Generalize to the setting in which we use the "simple" MDP, but
+    #  we manually mark some states as the end ones
+    terminal = ph.get_terminal(params=mdp_params, terminal_states=[ph.mdp.END_STATE])
+    trajectories_ = ph.get_trajectories(params=mdp_params, trajectories=trajectories)
+
+    if not config.causal:
+        x = irl.maxent.irl(
+            p_transition=p_t,
+            features=features,
+            terminal=terminal,
+            trajectories=trajectories_,
+            optim=optim,
+            init=init,
+            eps=config.optimization.eps,
+        )
+    else:
+        x = irl.maxent.irl_causal(
+            p_transition=p_t,
+            features=features,
+            terminal=terminal,
+            trajectories=trajectories_,
+            optim=optim,
+            init=init,
+            eps=config.optimization.eps,
+            discount=config.discount,
+        )
 
     logger.info(x)
     logger.info("Run finished.")
