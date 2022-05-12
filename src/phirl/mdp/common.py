@@ -2,7 +2,7 @@ from typing import Dict, Generic, Hashable, Iterable, Sequence, Tuple, TypeVar
 
 import numpy as np
 
-import phirl.maxent.interfaces as interfaces
+import phirl.mdp.interfaces as interfaces
 
 _S = TypeVar("_S")  # Placeholder for states
 _A = TypeVar("_A")  # Placeholder for actions

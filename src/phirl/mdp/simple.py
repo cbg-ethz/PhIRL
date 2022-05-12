@@ -8,7 +8,7 @@ from typing import cast, Dict, Tuple
 
 import numpy as np
 
-import phirl.maxent.interfaces as interfaces
+import phirl.mdp.interfaces as interfaces
 
 
 State = Tuple[int, ...]  # Each state is a binary tuple (0, 1, 0, ...)

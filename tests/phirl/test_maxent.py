@@ -5,7 +5,7 @@ from phirl.anytree_utils import Trajectory
 import pytest
 import anytree
 
-import phirl.maxent as me
+import phirl.mdp as me
 import phirl.api as ph
 from irl_maxent import optimizer as O
 

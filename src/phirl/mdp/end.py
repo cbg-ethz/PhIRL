@@ -2,9 +2,9 @@ from typing import cast, Tuple, Union
 
 import numpy as np
 
-import phirl.maxent.common
-import phirl.maxent.interfaces as interfaces
-import phirl.maxent.simple as simple
+import phirl.mdp.common
+import phirl.mdp.interfaces as interfaces
+import phirl.mdp.simple as simple
 
 # We allow an additional action leading to the unique end state
 END_ACTION = "END ACTION"

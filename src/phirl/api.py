@@ -1,4 +1,4 @@
-import phirl.maxent as maxent
+import phirl.mdp as maxent
 from phirl.anytree_utils import (
     construct_random_trajectory,
     filter_trajectories,
@@ -22,6 +22,6 @@ __all__ = [
     "pick_random_trajectory",
     "Trajectory",
     "TreeNaming",
-    # *** phirl.maxent: ***
+    # *** phirl.mdp: ***
     "maxent",
 ]

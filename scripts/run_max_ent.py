@@ -17,7 +17,7 @@ import numpy as np
 
 import phirl.api as ph
 import phirl.hydra_utils as hy
-import phirl.maxent as me
+import phirl.mdp as me
 from irl_maxent import optimizer
 
 
