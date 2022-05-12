@@ -1,42 +1,8 @@
-from typing import List, Tuple
 import numpy as np
 import numpy.testing as nptest
-from phirl.anytree_utils import Trajectory
 import pytest
-import anytree
 
 import phirl.mdp as me
-import phirl.api as ph
-from irl_maxent import optimizer as O
-
-
-@pytest.mark.parametrize("n_actions", (2, 5, 7))
-def test_n_states(n_actions: int) -> None:
-    n_s = me.get_n_states(n_actions)
-
-    assert isinstance(n_s, int)
-    assert n_s == 2**n_actions
-
-
-@pytest.mark.parametrize("n_actions", (2, 5, 7))
-def test_state_space(n_actions: int) -> None:
-    space = me.get_state_space(n_actions)
-    size = me.get_n_states(n_actions)
-
-    # Check the size of the space
-    assert len(space) == size
-
-    # Check whether the states are unique
-    assert len(set(space)) == size
-
-    # Check each state separately
-    for state in space:
-        assert isinstance(state, tuple)
-        assert len(state) == n_actions
-
-        # Check if this is a binary vector
-        assert max(state) <= 1
-        assert min(state) >= 0
 
 
 class TestDeterministicTreeMDP:
@@ -162,44 +128,6 @@ class TestOneHotFeaturizer:
         for state in space:
             index = featurizer.state_to_index(state)
             nptest.assert_equal(featurizer.transform(state), np.eye(len(space))[index])
-
-
-class TestTrajectory:
-    def test_init_raises(self) -> None:
-        with pytest.raises(ValueError):
-            me.Trajectory(states=[(0, 1), (0, 0)], actions=[1, 2, 3])
-        with pytest.raises(ValueError):
-            me.Trajectory(states=[], actions=[2, 3])
-        with pytest.raises(ValueError):
-            me.Trajectory(states=[(0, 0), (0, 1), (1, 1)], actions=[1])
-
-    def test_init_ok(self) -> None:
-        states = ((0, 1), (0, 0), (1, 1))
-        actions = (2, 5)
-        trajectory = me.Trajectory(states=states, actions=actions)
-
-        assert trajectory.states == states
-        assert trajectory.actions == actions
-
-    def test_equality(self) -> None:
-        states = ((0, 1), (0, 0), (1, 1))
-        actions = (2, 5)
-        t1 = me.Trajectory(states=states, actions=actions)
-        t2 = me.Trajectory(states=list(states), actions=list(actions))
-        assert t1 == t2
-
-
-def test_unroll_trajectory() -> None:
-    mdp = me.DeterministicTreeMDP(n_actions=2)
-    states = [(0, 0), (0, 1), (1, 1)]
-    actions = [2, 1]
-    trajectory = me.Trajectory(
-        states=states,
-        actions=actions,
-    )
-
-    trajectory_ = me.unroll_trajectory(actions=actions, initial_state=(0, 0), mdp=mdp)
-    assert trajectory == trajectory_
 
 
 @pytest.mark.parametrize("n_actions", (5, 10))
