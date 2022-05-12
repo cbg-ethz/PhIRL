@@ -75,19 +75,3 @@ class IMDPParams(abc.ABC, Generic[State, Action]):
              as it is often faster.
         """
         return len(self.actions)
-
-
-_T = TypeVar("_T")
-
-
-class IEnumerate(abc.ABC, Generic[_T]):
-    """Interface used to enumerate objects and quickly
-    access the index."""
-
-    @abc.abstractmethod
-    def to_index(self, obj: _T) -> int:
-        pass
-
-    @abc.abstractmethod
-    def to_object(self, index: int) -> _T:
-        pass

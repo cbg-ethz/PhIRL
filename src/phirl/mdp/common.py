@@ -1,4 +1,4 @@
-from typing import Dict, Generic, Hashable, Iterable, Sequence, Tuple, TypeVar
+from typing import Dict, Generic, Iterable, Sequence, Tuple, TypeVar
 
 import numpy as np
 
@@ -122,34 +122,3 @@ def slice_trajectory(
         states=trajectory.states[start:end],
         actions=trajectory.states[start:end],
     )
-
-
-_T = TypeVar("_T")
-_H = TypeVar("_H", bound=Hashable)
-
-
-class _EnumerateHashable(Generic[_H]):
-    def __init__(self, objects: Sequence[_H], initial: int = 0) -> None:
-        self._to_object = dict(enumerate(objects, initial))
-        self._to_index = dict(zip(self._to_object.values(), self._to_object.keys()))
-
-    def to_index(self, obj: _H) -> int:
-        return self._to_index[obj]
-
-    def to_object(self, index: int) -> _H:
-        return self._to_object[index]
-
-
-class Enumerate(interfaces.IEnumerate, Generic[_T]):
-    """Auxiliary class, mapping objects to indexes."""
-
-    def __init__(self, objects: Sequence[_T], initial: int = 0, hashable: bool = True) -> None:
-        if not hashable:
-            raise NotImplementedError("The objects must be hashable so far.")
-        self._enumerate = _EnumerateHashable(objects, initial=initial)
-
-    def to_object(self, index: int) -> _T:
-        return self._enumerate.to_object(index)
-
-    def to_index(self, obj: _T) -> int:
-        return self._enumerate.to_index(obj)
