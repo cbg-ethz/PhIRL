@@ -1,4 +1,5 @@
-from typing import Dict, Generic, Iterable, Sequence, Tuple, TypeVar
+import dataclasses
+from typing import Dict, Generic, Iterable, List, Sequence, Tuple, TypeVar, Union
 
 import numpy as np
 
@@ -40,7 +41,7 @@ class Trajectory(Generic[_S, _A]):
 def unroll_trajectory(
     actions: Sequence[_A],
     initial_state: _S,
-    dynamics: interfaces.IDeterministicTransitionFunction,
+    dynamics: interfaces.IDeterministicTransitionFunction[_S, _A],
 ) -> Trajectory[_S, _A]:
     """Using a *deterministic* MDP simulates the trajectory, basing on executed `actions`
     starting at `initial_state`.
@@ -122,3 +123,37 @@ def slice_trajectory(
         states=trajectory.states[start:end],
         actions=trajectory.states[start:end],
     )
+
+
+@dataclasses.dataclass
+class LengthConfig:
+    """
+
+    Attrs:
+        truncate: if True, too long trajectories are truncated. If False, they are filtered out
+        min_length: trajectories with shorter length are filtered out
+        max_length: controls the maximal length of the trajectory.
+         Longer trajectories are either truncated or filtered out,
+         depending on the `truncate` parameter
+
+    See `filter_truncate_trajectories`.
+    """
+
+    truncate: bool = True
+    min_length: int = 0
+    max_length: int = 1_000_000
+
+
+_T = TypeVar("_T")
+
+
+def filter_truncate(
+    sequences: Iterable[Union[List[_T], Tuple[_T]]], config: LengthConfig
+) -> Tuple[Tuple[_T]]:
+    """See `LengthConfig`."""
+    sequences = tuple(tuple(seq) for seq in sequences if len(seq) >= config.min_length)
+
+    if config.truncate:
+        return tuple(seq[: config.max_length] for seq in sequences)
+    else:
+        return (seq for seq in sequences if len(seq) <= config.max_length)

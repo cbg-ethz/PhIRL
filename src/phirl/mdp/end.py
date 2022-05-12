@@ -53,6 +53,18 @@ class EndIdentityFeaturizer(interfaces.IFeaturizer):
             return self._featurizer.transform(state)
 
 
+class EndTransitionFunction(interfaces.IDeterministicTransitionFunction):
+    def __init__(self, n_ordinary_actions: int) -> None:
+        self._simple_transition = simple.SimpleTransitionFunction(n_ordinary_actions)
+
+    def transition(self, state: State, action: Action) -> State:
+        # The end state is absorbing and the end action always leads to the end state
+        if state == END_STATE or action == END_ACTION:
+            return END_STATE
+        else:
+            return self._simple_transition.transition(state=state, action=action)
+
+
 def add_end_action_and_state(
     trajectory: common.Trajectory,
 ) -> common.Trajectory:
