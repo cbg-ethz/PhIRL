@@ -2,7 +2,7 @@ from typing import cast, Tuple, Union
 
 import numpy as np
 
-import phirl.mdp.common
+import phirl.mdp.common as common
 import phirl.mdp.interfaces as interfaces
 import phirl.mdp.simple as simple
 
@@ -54,10 +54,10 @@ class EndIdentityFeaturizer(interfaces.IFeaturizer):
 
 
 def add_end_action_and_state(
-    trajectory: phirl.maxent.common.Trajectory,
-) -> phirl.maxent.common.Trajectory:
+    trajectory: common.Trajectory,
+) -> common.Trajectory:
     """Creates a new trajectory, differing from `trajectory` by the end action and the end state."""
-    return phirl.maxent.common.Trajectory(
+    return common.Trajectory(
         states=list(trajectory.states) + [END_STATE],
         actions=list(trajectory.actions) + [END_ACTION],
     )
