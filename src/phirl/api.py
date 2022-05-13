@@ -1,5 +1,4 @@
-import phirl.mdp.api as mdp
-
+import phirl.maxent as maxent
 from phirl.anytree_utils import (
     construct_random_trajectory,
     filter_trajectories,
@@ -12,8 +11,6 @@ from phirl.anytree_utils import (
     TreeNaming,
 )
 
-from phirl.maxent import get_trajectories, get_terminal, get_features, get_p_transition
-
 __all__ = [
     # *** phirl.anytree_utils: ***
     "construct_random_trajectory",
@@ -25,11 +22,6 @@ __all__ = [
     "pick_random_trajectory",
     "Trajectory",
     "TreeNaming",
-    # *** phirl.mdp: ***
-    "mdp",
     # *** phirl.maxent: ***
-    "get_trajectories",
-    "get_terminal",
-    "get_features",
-    "get_p_transition",
+    "maxent",
 ]
