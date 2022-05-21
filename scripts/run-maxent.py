@@ -55,7 +55,7 @@ def get_action_trajectories(config: MainConfig) -> List[List[int]]:
     trees = ph.parse_forest(dataframe, naming=config.naming)
 
     # Get all paths from every tree and concatenate into one list
-    all_paths = sum([ph.list_all_trajectories(tree) for tree in trees.values()], start=[])
+    all_paths = sum([ph.list_all_trajectories(tree) for tree in trees.values()], [])
 
     # Return the mutations (actions) form each node
     return [[node.mutation for node in path if node.mutation > 0] for path in all_paths]
