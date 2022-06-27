@@ -9,6 +9,7 @@ Note:
 import dataclasses
 import json
 import logging
+import time
 from typing import List
 
 import pandas as pd
@@ -89,6 +90,8 @@ def get_featurizer(identity: bool, params: ph.mdp.EndParams) -> ph.mdp.EndFeatur
 
 @hy.main
 def main(config: MainConfig) -> None:
+    time_start = time.time()
+
     logger = logging.getLogger(__name__)
     logger.info("Starting new run...")
 
@@ -148,6 +151,7 @@ def main(config: MainConfig) -> None:
         "states": mdp_params.states,
         "features": features.tolist(),
         "rewards": rewards.tolist(),
+        "time": time.time() - time_start,
     }
 
     with open("results.json", "w") as fp:
