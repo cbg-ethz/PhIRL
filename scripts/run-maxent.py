@@ -7,6 +7,7 @@ Note:
     The data path must be absolute not relative.
 """
 import dataclasses
+import json
 import logging
 from typing import List
 
@@ -19,9 +20,9 @@ import phirl.hydra_utils as hy
 
 @dataclasses.dataclass
 class OptimizationConfig:
-    lr: float = 0.05
+    lr: float = 0.02
     initial: float = -0.1
-    eps: float = 0.05
+    eps: float = 0.02
 
 
 @hy.config
@@ -31,6 +32,7 @@ class MainConfig:
     Attrs:
         data: absolute path to the CSV with trees
         mutations: the number of mutations
+        identity: whether to use the identity featurizer
         optimization: settings for the optimization
         naming: settings for parsing the input CSV
         length: settings for filtering out (or truncating) trajectories
@@ -41,6 +43,7 @@ class MainConfig:
 
     data: str
     mutations: int
+    identity: bool = True
 
     causal: bool = False
     discount: float = 0.9
@@ -77,6 +80,13 @@ def get_trajectories(config: MainConfig) -> List[ph.mdp.Trajectory]:
     return trajectories
 
 
+def get_featurizer(identity: bool, params: ph.mdp.EndParams) -> ph.mdp.EndFeaturizer:
+    if identity:
+        return ph.mdp.EndIdentityFeaturizer(params)
+    else:
+        return ph.mdp.EndOneHotFeaturizer(params)
+
+
 @hy.main
 def main(config: MainConfig) -> None:
     logger = logging.getLogger(__name__)
@@ -99,7 +109,7 @@ def main(config: MainConfig) -> None:
     # Process the data so it fits the interface specifications
     p_t = ph.get_p_transition(params=mdp_params, dynamics=mdp_dynamics)
     features = ph.get_features(
-        params=mdp_params, featurizer=ph.mdp.EndIdentityFeaturizer(params=mdp_params)
+        params=mdp_params, featurizer=get_featurizer(identity=config.identity, params=mdp_params)
     )
     # We have a unique terminal state.
     # TODO(Pawel): Generalize to the setting in which we use the "simple" MDP, but
@@ -108,7 +118,7 @@ def main(config: MainConfig) -> None:
     trajectories_ = ph.get_trajectories(params=mdp_params, trajectories=trajectories)
 
     if not config.causal:
-        x = irl.maxent.irl(
+        rewards = irl.maxent.irl(
             p_transition=p_t,
             features=features,
             terminal=terminal,
@@ -118,7 +128,7 @@ def main(config: MainConfig) -> None:
             eps=config.optimization.eps,
         )
     else:
-        x = irl.maxent.irl_causal(
+        rewards = irl.maxent.irl_causal(
             p_transition=p_t,
             features=features,
             terminal=terminal,
@@ -129,7 +139,15 @@ def main(config: MainConfig) -> None:
             discount=config.discount,
         )
 
-    logger.info(x)
+    results = {
+        "states": mdp_params.states,
+        "features": features.tolist(),
+        "rewards": rewards.tolist(),
+    }
+
+    with open("results.json", "w") as fp:
+        json.dump(obj=results, fp=fp)
+
     logger.info("Run finished.")
 
 

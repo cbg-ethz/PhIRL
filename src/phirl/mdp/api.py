@@ -15,7 +15,9 @@ from phirl.mdp.simple import (
 from phirl.mdp.end import (
     EndParams,
     EndTransitionFunction,
+    EndFeaturizer,
     EndIdentityFeaturizer,
+    EndOneHotFeaturizer,
     add_end_action_and_state,
     END_STATE,
 )
@@ -31,7 +33,9 @@ __all__ = [
     # *** phirl.mdp.end ***
     "END_STATE",
     "EndParams",
+    "EndFeaturizer",
     "EndIdentityFeaturizer",
+    "EndOneHotFeaturizer",
     "EndTransitionFunction",
     "add_end_action_and_state",
     # *** phirl.mdp.interfaces ***
