@@ -99,14 +99,17 @@ def main(config: MainConfig) -> None:
     trajectories = [ph.mdp.add_end_action_and_state(tr) for tr in trajectories]
 
     # We need to define the MDP with an additional end state
+    logger.info("Defining the MDP dynamics...")
     mdp_params = ph.mdp.EndParams(config.mutations)
     mdp_dynamics = ph.mdp.EndTransitionFunction(config.mutations)
 
     # Initialize optimizer and initial reward weights
+    logger.info("Initializing the optimizer...")
     init = irl.optimizer.Constant(config.optimization.initial)
     optim = irl.optimizer.Sga(lr=config.optimization.lr)
 
     # Process the data so it fits the interface specifications
+    logger.info("Calculating the dynamics matrix and the feature matrix...")
     p_t = ph.get_p_transition(params=mdp_params, dynamics=mdp_dynamics)
     features = ph.get_features(
         params=mdp_params, featurizer=get_featurizer(identity=config.identity, params=mdp_params)
@@ -117,6 +120,7 @@ def main(config: MainConfig) -> None:
     terminal = ph.get_terminal(params=mdp_params, terminal_states=[ph.mdp.END_STATE])
     trajectories_ = ph.get_trajectories(params=mdp_params, trajectories=trajectories)
 
+    logger.info("Finding the rewards...")
     if not config.causal:
         rewards = irl.maxent.irl(
             p_transition=p_t,
@@ -139,6 +143,7 @@ def main(config: MainConfig) -> None:
             discount=config.discount,
         )
 
+    logger.info("Saving the results...")
     results = {
         "states": mdp_params.states,
         "features": features.tolist(),
