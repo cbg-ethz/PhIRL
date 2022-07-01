@@ -36,10 +36,9 @@ class EndParams(interfaces.IMDPParams):
         return self.simple.n_actions + 1
 
 
-class EndIdentityFeaturizer(interfaces.IFeaturizer):
-    def __init__(self, params: EndParams) -> None:
-        self._params = params
-        self._featurizer = simple.IdentityFeaturizer(params.simple)
+class EndFeaturizer(interfaces.IFeaturizer):
+    def __init__(self, simple_featurizer: interfaces.IFeaturizer) -> None:
+        self._featurizer = simple_featurizer
 
     @property
     def shape(self) -> Tuple[int, ...]:
@@ -51,6 +50,18 @@ class EndIdentityFeaturizer(interfaces.IFeaturizer):
         else:
             state = cast(simple.State, state)
             return self._featurizer.transform(state)
+
+
+class EndIdentityFeaturizer(EndFeaturizer):
+    def __init__(self, params: EndParams) -> None:
+        featurizer = simple.IdentityFeaturizer(params.simple)
+        super().__init__(simple_featurizer=featurizer)
+
+
+class EndOneHotFeaturizer(EndFeaturizer):
+    def __init__(self, params: EndParams) -> None:
+        featurizer = simple.OneHotFeaturizer(params.simple)
+        super().__init__(simple_featurizer=featurizer)
 
 
 class EndTransitionFunction(interfaces.IDeterministicTransitionFunction):
